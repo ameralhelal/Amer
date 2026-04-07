@@ -25,5 +25,8 @@ build/
 # Ruff
 .ruff_cache/
 
+# Local folder backups (backup_folder.py)
+_backups/
+
 # Local config (optional: uncomment if you don't want to track local data)
 # CryptoTrading/
