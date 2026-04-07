@@ -1,0 +1,6 @@
+[tool.ruff]
+exclude = ["dist", ".venv", "venv", "build"]
+
+# E402 في trading_panel: استيراد بعد كتلة try لمسار كاش eToro — مقصود
+[tool.ruff.lint.per-file-ignores]
+"trading_panel.py" = ["E402"]

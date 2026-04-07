@@ -1,0 +1,2 @@
+# أدوات التحقق من الجودة (اختياري — pip install -r requirements-dev.txt)
+ruff>=0.8.0

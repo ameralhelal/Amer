@@ -1,0 +1,31 @@
+---
+description: eToro + جدول المراكز + أسعار Binance — سياق المشروع وما لا يُكسر
+alwaysApply: true
+---
+
+# تداول — eToro والمراكز وأسعار الصفوف
+
+## مزامنة eToro
+- الـ API قد يُرجع `positions=0` مؤقتاً بعد شراء/مزامنة. **لا تمسح** صفوفاً محلية صالحة بدون دمج آمن؛ المشروع يستخدم `merge_etoro_positions_from_exchange` وحماية «transient empty».
+- رمز المنصة قد يكون `ETORO_<id>` بينما العرض للمستخدم زوج مثل `NIGHTUSDT`. **لا تفترض** تطابق `internalSymbolFull` مع نص الواجهة عند الإغلاق — راجع `exchange_etoro.py` (مطابقة الرمز، وملاذ **مركز واحد** على الحساب عند غياب التطابق إن كان العدد 1).
+
+## أسعار وربح الصفوف (`open_positions.py`)
+- مصدران: (1) سعر **الشارت** لـ `current_symbol` → `_price_by_symbol`؛ (2) **استطلاع Binance** لباقي الأزواج.
+- `OpenPositionsPanel.current_symbol` يُزامَن من `TradingPanel` عند تغيير الرمز وعند `set_positions_panel` وفي `_run_heavy_price_update` حتى لا يختلف مفتاح حقن السعر عن الشارت.
+- إذا `_last_price <= 0` لا يُصدَر `price_updated`؛ `TradingPanel` يستدعي `_schedule_price_poll_for_open_rows` بحدّ أدنى كل ~2s عند وجود صفوف حتى لا تبقى الأعمدة فارغة قبل أول تيك.
+- `_row_binance_price_key`: **النص المعروض** بزوج `…USDT` صالح يُفضَّل على `ROW_PRICE_SYMBOL_ROLE` لتفادي كاش/eToro قديم يخالف العمود.
+- أي تعديل هنا: راجع أيضاً `merge_etoro_positions_from_exchange`، `add_or_update_position`، `_set_row_price_symbol`، و`trading_panel._persist_etoro_positions_cache_from_table`.
+
+## بوت ومسارات السعر
+- **وقف الخسارة** لا يُحجب بـ cooldown (تعليق صريح في الكود).
+- **التتبع** يُفعَّل بـ `bot_trailing_enabled` (افتراضي True) — **ليس** بـ `bot_auto_sell`؛ الافتراضي `bot_auto_sell=False` كان يُحجب التتبع بالكامل عبر `_auto_profit_sell_allowed`.
+- **التتبع** و**توصية البوت** يستخدمان `_bot_cooldown_until` (~90s بعد تنفيذ).
+- مسار SL/التتبع على **رمز الشارت** يعتمد على `get_position_for_symbol(current_symbol)`؛ إذا الشارت على رمز والصف على آخر تظهر رسالة «لا يطابق» — اضبط الشارت أو استخدم وقف الصف من الجدول.
+
+## مبدأ عام
+- إصلاح **عرض Binance** لا يُصلح تلقائياً **تطابق eToro** والعكس. غيّر مساراً واحداً وتحقق من الآخرين المذكورين أعلاه.
+
+## ملفات مرجعية
+- `open_positions.py` — جدول، `ROW_PRICE_SYMBOL_ROLE`، تعليق «عقد سعر المراكز».
+- `trading_panel.py` — مزامنة، كاش، بوت، cooldown.
+- `exchange_etoro.py` — `close_position`, `find_position_id_for_open_row`, `enumerate_positions_for_symbol`.

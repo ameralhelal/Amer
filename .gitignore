@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.eggs/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+tempCodeRunnerFile.py
+
+# PyInstaller / builds
+dist/
+build/
+*.spec.bak
+
+# Ruff
+.ruff_cache/
+
+# Local config (optional: uncomment if you don't want to track local data)
+# CryptoTrading/

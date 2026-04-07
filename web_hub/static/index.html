@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>منصة تداول العملات — CryptoWeb Hub</title>
+  <!-- hub-static-v: 20260410 — إن رأيت رقماً أقدم في المصدر فأنت لا تصل لآخر ملف -->
+  <!-- بدون هذا: إن لم يُحمَّل trading-like.css يبقى modal-root بعرض الشاشة ويلتقط كل النقرات -->
+  <style>
+    .modal-root.is-hidden,
+    .modal-root[hidden] { display: none !important; }
+    .modal-dialog.is-hidden { display: none !important; }
+  </style>
+  <link rel="stylesheet" href="/assets/css/trading-like.css?v=20260410" />
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js" crossorigin></script>
+  <script>
+    (function () {
+      if (typeof LightweightCharts !== "undefined") return;
+      var s = document.createElement("script");
+      s.src = "https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js";
+      document.head.appendChild(s);
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-root">
+    <div class="app-inner">
+      <!-- ≈ TradingPanel: إجراءات سريعة | حالة السوق | لوحة AI (نفس ترتيب الصف العلوي) -->
+      <section class="section-upper">
+        <div class="trading-top-grid">
+          <fieldset class="group-box panel-quick">
+            <legend>إجراءات سريعة</legend>
+            <div class="field-row">
+              <label for="sel-exchange">المنصة</label>
+              <select id="sel-exchange" class="field-sm" aria-label="المنصة" title="Binance و eToro متاحان للويب">
+                <option value="binance" selected>Binance</option>
+                <option value="etoro">eToro</option>
+                <option value="bitget" disabled>Bitget (قريباً)</option>
+              </select>
+            </div>
+            <div class="field-row symbol-row">
+              <label for="symbol-search">الرمز</label>
+              <div class="symbol-cluster">
+                <input type="search" id="symbol-search" class="field-sm symbol-search" placeholder="إبحث…" autocomplete="off" />
+                <select id="sel-symbol" class="field-sm symbol-select" aria-label="اختيار الرمز"></select>
+                <button type="button" class="btn-icon" title="المزيد" disabled>…</button>
+              </div>
+            </div>
+            <div class="quick-pills">
+              <button type="button" class="pill-btn" disabled id="pill-amount-display">المبلغ: —</button>
+              <button type="button" class="pill-btn" disabled id="pill-leverage-display">الرافعة: 10x</button>
+              <button type="button" class="pill-btn" disabled>نوع السوق</button>
+              <button type="button" class="pill-btn" disabled>TP / SL / حدود</button>
+            </div>
+            <div class="field-row">
+              <label for="sel-interval">الإطار</label>
+              <select id="sel-interval" class="field-sm" aria-label="إطار الشارت">
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m" selected>15m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+                <option value="1d">1d</option>
+              </select>
+            </div>
+            <div class="buy-sell-row">
+              <button type="button" class="btn-buy-lg" disabled>شراء</button>
+              <button type="button" class="btn-sell-lg" disabled>إغلاق الكل</button>
+            </div>
+            <div class="bot-row">
+              <span class="mode-pill" id="mode-label">البوت: OFF</span>
+              <button type="button" class="toggle-off" id="btn-bot-toggle" title="وضع تجريبي للواجهة فقط — التنفيذ الحقيقي من تطبيق سطح المكتب">OFF</button>
+              <button type="button" class="pill-btn pill-btn--click" id="btn-settings" title="فحص الخادم وتشخيص Binance">إعدادات</button>
+              <button type="button" class="pill-btn pill-btn--click wide" id="btn-risk-settings">إعدادات المخاطر</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="group-box panel-market">
+            <legend>حالة السوق</legend>
+            <div class="market-status-bar">
+              <span class="conn-wait" id="conn-label">بانتظار أول طلب للخادم…</span>
+              <span class="badge-testnet">تداول وهمي</span>
+              <span class="badge-gray" id="badge-liq" title="حجم تداول 24h تقريبي (USDT)">Vol —</span>
+              <span class="badge-gray" id="badge-cb" title="تنبيه تقلب مبسّط (ليس قاطع التطبيق)">CB —</span>
+              <span class="bot-status-inline" id="bot-status-line">البوت متوقف — واجهة ويب (عرض فقط)</span>
+            </div>
+            <div class="balance-price-row">
+              <div class="balance-cluster">
+                <div class="balance-frame"><span id="balance-label">الرصيد: —</span></div>
+                <button type="button" class="btn-icon btn-icon--click" id="btn-balance-refresh" title="فحص الخادم المحلي">↻</button>
+              </div>
+              <div class="price-center">
+                <span class="price-main" id="last-price">—</span>
+                <span class="price-day" id="day-pct">—</span>
+              </div>
+            </div>
+            <div class="market-micro">
+              <p class="micro-line" id="market-micro">البورصة: <span id="exchange-line">Binance</span> · الشموع عبر الخادم المحلي <code>/api/klines</code></p>
+              <div class="market-indicators-rich micro-muted" id="market-indicators-block" aria-live="polite">مؤشرات: — · يُحدَّث مع اللقطة</div>
+            </div>
+          </fieldset>
+
+          <fieldset class="group-box panel-ai-side">
+            <legend>لوحة التوصية</legend>
+            <div class="ai-side-rows">
+              <div class="ai-row"><span class="k">التوصية</span><span class="v" id="ai-rec">انتظار</span></div>
+              <div class="ai-row"><span class="k">الثقة</span><span class="v" id="ai-conf">—</span></div>
+              <div class="ai-row"><span class="k">الاستراتيجية</span><span class="v" id="ai-strategy">—</span></div>
+              <div class="ai-row"><span class="k">مراكز مفتوحة</span><span class="v" id="ai-positions">—</span></div>
+            </div>
+            <p class="ai-footnote">
+              <code>/api/snapshot</code> يحمّل شموع Binance (حتى 500) ويحسب المؤشرات عبر نفس <strong>FrameStream.compute_indicators</strong> في <code>websocket_manager.py</code>
+              (MACD، Bollinger، VWAP، ATR، ADX، StochRSI، إيشيموكو، Pivot، Supertrend، أنماط الشموع، Fear&amp;Greed، إلخ).
+              التوصية والثقة تُستخرجان عبر <code>AIPanel.get_recommendation</code> عند توفر <strong>PyQt6</strong> في بيئة تشغيل الخادم؛ وإلا تظهر رسالة احتياطية.
+              ما يبقى خارج الويب: رسم المؤشرات على الشارت، شرارات متعددة الإطارات، المزامنة المباشرة مع WebSocket التطبيق، وتنفيذ الصفقات — من <code>trading_panel.py</code> والتطبيق المفتوح.
+            </p>
+          </fieldset>
+        </div>
+      </section>
+
+      <div class="main-separator" aria-hidden="true"></div>
+
+      <!-- ≈ CenterPanel: تبويبات الوسط (بدون مكرر المؤشرات/السوق/AI — تظهر في الأعلى وفي ملخص الذكاء) -->
+      <section class="section-lower">
+        <nav class="tabs-row" id="tabs-nav" aria-label="تبويبات الوسط">
+          <button type="button" data-tab="chart" class="active">الشارت</button>
+          <button type="button" data-tab="positions">المراكز</button>
+          <button type="button" data-tab="summary">ملخص الذكاء الاصطناعي</button>
+          <button type="button" data-tab="orders">سجل الأوامر</button>
+          <button type="button" data-tab="history">سجل الصفقات</button>
+          <button type="button" data-tab="daily">السجل اليومي</button>
+          <button type="button" data-tab="errors">سجل الأخطاء</button>
+          <span class="tabs-spacer"></span>
+          <button type="button" class="btn-popout" id="btn-popout" disabled title="مثل التطبيق: فتح التبويب في نافذة — غير مفعّل في الويب">↗</button>
+        </nav>
+
+        <div class="tab-panels">
+          <div id="tab-chart" class="tab-panel active" dir="ltr">
+            <div class="chart-panel-layout">
+              <aside class="draw-toolbar" dir="rtl" aria-label="أدوات الشارت">
+                <span class="dt-label">نوع الشارت</span>
+                <div class="dt-btns">
+                  <button type="button" class="dt-btn" title="شموع" disabled>🕯</button>
+                  <button type="button" class="dt-btn" disabled>⬛</button>
+                  <button type="button" class="dt-btn" disabled>〰</button>
+                  <button type="button" class="dt-btn" disabled>▀</button>
+                  <button type="button" class="dt-btn" disabled>▢</button>
+                </div>
+                <span class="dt-label">رسم</span>
+                <div class="dt-btns">
+                  <button type="button" class="dt-btn" disabled>SR</button>
+                  <button type="button" class="dt-btn" disabled>―</button>
+                  <button type="button" class="dt-btn" disabled>✋</button>
+                  <button type="button" class="dt-btn" disabled>✕</button>
+                </div>
+              </aside>
+              <div class="chart-main-col">
+                <div class="chart-toolbar" id="chart-status">تهيئة الشارت…</div>
+                <div id="chart-container">
+                  <div class="chart-fallback" id="chart-fallback">جاري تحميل مكتبة الشارت…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="tab-positions" class="tab-panel"><div class="panel-placeholder">المراكز المفتوحة — نفس تبويب التطبيق؛ الربط لاحقاً</div></div>
+          <div id="tab-summary" class="tab-panel">
+            <p class="hub-tab-hint">ملخص من <code>/api/snapshot</code> يتضمّن التوصية وتفاصيل السوق ونص المؤشرات (أُزيلت تبويبات منفصلة لتقليل التكرار مع الشريط العلوي).</p>
+            <pre id="summary-live-pre" class="hub-live-pre">في انتظار البيانات…</pre>
+          </div>
+          <div id="tab-orders" class="tab-panel"><div class="panel-placeholder">سجل الأوامر</div></div>
+          <div id="tab-history" class="tab-panel"><div class="panel-placeholder">سجل الصفقات</div></div>
+          <div id="tab-daily" class="tab-panel"><div class="panel-placeholder">السجل اليومي</div></div>
+          <div id="tab-errors" class="tab-panel"><div class="panel-placeholder">سجل الأخطاء</div></div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="status-bar">
+      CryptoWeb Hub · <span id="hub-ui-ver">—</span> · محلي · أوامر حقيقية غير مفعّلة · <a class="shell-link" href="/assets/shell.html">shell</a>
+    </footer>
+  </div>
+
+  <!-- نوافذ منبثقة: إعدادات / مخاطر (مثل تطبيق سطح المكتب — منطق الويب محلي) -->
+  <div id="modal-root" class="modal-root is-hidden" hidden aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div id="dlg-settings" class="modal-dialog is-hidden" role="dialog" aria-labelledby="dlg-settings-title">
+      <div class="modal-head">
+        <h2 id="dlg-settings-title">إعدادات</h2>
+        <button type="button" class="modal-x" data-close-modal aria-label="إغلاق">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-note">مفاتيح API، eToro، والمنصّات الكاملة ما زالت في <strong>تطبيق سطح المكتب</strong>. هنا فحوصات للويب المحلي.</p>
+        <div class="modal-actions">
+          <button type="button" class="pill-btn pill-btn--click" id="btn-check-health">فحص الخادم <code>/api/health</code></button>
+          <button type="button" class="pill-btn pill-btn--click" id="btn-check-binance">فحص اتصال Binance من الخادم</button>
+          <button type="button" class="pill-btn pill-btn--click" id="btn-check-etoro">فحص eToro (مفاتيح على الخادم)</button>
+        </div>
+        <pre class="modal-out" id="settings-diag-out">—</pre>
+        <p class="modal-hint">إذا نجح الفحص الثاني وفشل الشارت: أعد تحميل الصفحة أو راجع رسالة الخطأ في أعلى الشارت.</p>
+      </div>
+    </div>
+    <div id="dlg-risk" class="modal-dialog modal-dialog--risk is-hidden" role="dialog" aria-labelledby="dlg-risk-title">
+      <div class="modal-head">
+        <h2 id="dlg-risk-title">إعدادات المخاطر — المبلغ والرافعة</h2>
+        <button type="button" class="modal-x" data-close-modal aria-label="إغلاق">×</button>
+      </div>
+      <div class="modal-body modal-body--risk">
+        <p class="modal-note">هيكل مطابق لـ <code>risk_settings_window.py</code> (عام / خاص / دليل + تبويبات فرعية). الحفظ في المتصفح فقط — التطبيق الأصلي يقرأ <code>config.json</code>.</p>
+
+        <div class="risk-main-tabs" role="tablist">
+          <button type="button" class="risk-main-tab active" data-risk-main="general">الإعدادات العامة للبوت</button>
+          <button type="button" class="risk-main-tab" data-risk-main="advanced">إعدادات البوت الخاصة</button>
+          <button type="button" class="risk-main-tab" data-risk-main="guide">دليل الإعدادات</button>
+        </div>
+
+        <div id="risk-main-general" class="risk-main-panel active">
+          <div class="risk-subtabs" role="tablist">
+            <button type="button" class="risk-subtab active" data-risk-tab="basic">أساسي</button>
+            <button type="button" class="risk-subtab" data-risk-tab="limits">حدود ورأس مال</button>
+            <button type="button" class="risk-subtab" data-risk-tab="market">سوق وعرض</button>
+            <button type="button" class="risk-subtab" data-risk-tab="signal">إشارة ودخول</button>
+            <button type="button" class="risk-subtab" data-risk-tab="exit">خروج ومراكز</button>
+          </div>
+          <div class="risk-panels-scroll">
+          <div id="risk-tab-basic" class="risk-tab-panel active">
+            <p class="risk-section-hint">نمط الصفقة، الاستراتيجية، التحديث — كما في تبويب «أساسي».</p>
+            <div class="risk-grid">
+              <label class="modal-field"><span>نمط الصفقة (أفق)</span>
+                <select id="risk-horizon" class="field-sm">
+                  <option value="short" selected>قصير</option>
+                  <option value="swing">سوينغ</option>
+                </select>
+              </label>
+              <label class="modal-field modal-field--wide"><span>الاستراتيجية</span>
+                <select id="risk-strategy-mode" class="field-sm">
+                  <option value="custom" selected>مخصص</option>
+                  <option value="auto">تلقائي — سلسلة القواعد حسب نظام السوق</option>
+                  <option value="scalping">سكالبينغ</option>
+                  <option value="bounce">ارتداد</option>
+                  <option value="trend">اتباع اتجاه</option>
+                  <option value="dca">DCA</option>
+                  <option value="grid">شبكة</option>
+                  <option value="3commas">3Commas</option>
+                  <option value="breakout">كسر</option>
+                </select>
+              </label>
+              <div class="modal-field modal-field--wide">
+                <button type="button" class="pill-btn pill-btn--click" id="btn-risk-apply-preset">تطبيق افتراضيات هذه الاستراتيجية</button>
+              </div>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-follow-strategy" checked />
+                <span>اتباع الاستراتيجية المقترحة في الملخص (دمج الإعدادات تلقائياً)</span></label>
+              <label class="modal-field"><span>تأخير التطبيق (ثانية، 15–300)</span>
+                <input type="number" id="risk-follow-sec" class="field-sm" min="15" max="300" step="1" value="50" /></label>
+              <label class="modal-field"><span>مبلغ كل صفقة (USDT)</span>
+                <input type="number" id="risk-amount-usdt" class="field-sm" min="1" max="1000000" step="1" value="50" />
+              </label>
+              <label class="modal-field"><span>نوع المبلغ</span>
+                <select id="risk-amount-type" class="field-sm">
+                  <option value="value" selected>USDT ثابت</option>
+                  <option value="percent">نسبة من الرصيد</option>
+                </select>
+              </label>
+              <label class="modal-field"><span>نسبة الرصيد %</span>
+                <input type="number" id="risk-amount-percent" class="field-sm" min="0.1" max="100" step="0.1" value="10" />
+              </label>
+              <label class="modal-field"><span>الرافعة 1–125</span>
+                <input type="number" id="risk-leverage" class="field-sm" min="1" max="125" step="1" value="10" />
+              </label>
+              <label class="modal-field"><span>نوع السوق</span>
+                <select id="risk-market-type" class="field-sm">
+                  <option value="auto" selected>تلقائي</option>
+                  <option value="spot">سبوت</option>
+                  <option value="futures">عقود (فutures)</option>
+                </select>
+              </label>
+            </div>
+            <fieldset class="risk-fieldset">
+              <legend>التحقق من تحديث التطبيق</legend>
+              <label class="modal-field modal-field--wide"><span>رابط ملف التحديث (HTTPS)</span>
+                <input type="url" id="risk-update-url" class="field-sm" placeholder="https://example.com/version.json" /></label>
+            </fieldset>
+          </div>
+          <div id="risk-tab-limits" class="risk-tab-panel">
+            <p class="risk-section-hint">حدود اليوم، القاطع، التعرض — تبويب «حدود ورأس مال».</p>
+            <div class="risk-grid">
+              <label class="modal-field"><span>حد الخسارة اليومية (USDT، 0=معطّل)</span>
+                <input type="number" id="risk-daily-loss-usdt" class="field-sm" min="0" max="1000000" step="1" value="0" />
+              </label>
+              <label class="modal-field"><span>حد أقصى صفقات شراء في اليوم (0=معطّل)</span>
+                <input type="number" id="risk-max-trades-day" class="field-sm" min="0" max="999" step="1" value="0" />
+              </label>
+              <label class="modal-field"><span>حد الخسائر المتتالية للبوت (0=معطّل)</span>
+                <input type="number" id="risk-max-consec-losses" class="field-sm" min="0" max="50" step="1" value="0" />
+              </label>
+              <label class="modal-field"><span>أقصى صفقات مفتوحة معاً (0=بدون حد)</span>
+                <input type="number" id="risk-max-open-trades" class="field-sm" min="0" max="50" step="1" value="1" />
+              </label>
+              <label class="modal-field"><span>أقصى صفقات لكل رمز (0=معطّل)</span>
+                <input type="number" id="risk-max-trades-symbol" class="field-sm" min="0" max="999" step="1" value="0" />
+              </label>
+              <label class="modal-field"><span>سقف التعرض الإجمالي (USDT، 0=معطّل)</span>
+                <input type="number" id="risk-portfolio-exposure" class="field-sm" min="0" max="10000000" step="100" value="0" />
+              </label>
+              <label class="modal-field"><span>أقل فاصل بين شراءين لنفس الرمز (دقيقة، 0=بدون)</span>
+                <input type="number" id="risk-same-symbol-interval" class="field-sm" min="0" max="240" step="1" value="5" />
+              </label>
+            </div>
+            <fieldset class="risk-fieldset">
+              <legend>Circuit Breaker (قاطع مخاطر)</legend>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-cb-enabled" checked /> <span>تفعيل القاطع (يوقف شراء البوت مؤقتاً عند ظروف خطرة)</span></label>
+              <div class="risk-grid">
+                <label class="modal-field"><span>حد التقلب % (مع ADX ضعيف)</span>
+                  <input type="number" id="risk-cb-vol" class="field-sm" min="0.1" max="20" step="0.1" value="1.8" />
+                </label>
+                <label class="modal-field"><span>أدنى ADX يُعتبر اتجاهاً قوياً</span>
+                  <input type="number" id="risk-cb-adx" class="field-sm" min="5" max="60" step="0.5" value="18" />
+                </label>
+                <label class="modal-field"><span>أدنى MTF Bias (سالب)</span>
+                  <input type="number" id="risk-cb-mtf" class="field-sm" min="-2" max="0" step="0.05" value="-0.9" />
+                </label>
+                <label class="modal-field"><span>مدة التهدئة بعد التفعيل (دقائق)</span>
+                  <input type="number" id="risk-cb-pause" class="field-sm" min="1" max="240" step="1" value="20" />
+                </label>
+              </div>
+            </fieldset>
+          </div>
+          <div id="risk-tab-market" class="risk-tab-panel">
+            <p class="risk-section-hint">عملة العرض + ماسح السوق — تبويب «سوق وعرض».</p>
+            <div class="risk-grid">
+              <label class="modal-field"><span>عملة العرض</span>
+                <select id="risk-display-currency" class="field-sm">
+                  <option value="USD" selected>USD</option>
+                  <option value="EUR">EUR</option>
+                </select></label>
+              <label class="modal-field"><span>سعر 1 USDT باليورو</span>
+                <input type="number" id="risk-eur-rate" class="field-sm" step="0.0001" value="0.92" /></label>
+              <label class="modal-field"><span>حجم مجمع الماسح</span>
+                <input type="number" id="risk-scanner-pool" class="field-sm" min="10" value="50" /></label>
+              <label class="modal-field"><span>أدنى سيولة 24h (USDT)</span>
+                <input type="number" id="risk-scanner-vol" class="field-sm" step="100000" value="5000000" /></label>
+              <label class="modal-field"><span>أدنى تغيّر 24h %</span>
+                <input type="number" id="risk-scanner-change" class="field-sm" step="0.05" value="0.3" /></label>
+              <label class="modal-field"><span>أدنى تذبذب يومي %</span>
+                <input type="number" id="risk-scanner-range" class="field-sm" step="0.1" value="1" /></label>
+            </div>
+          </div>
+
+          <div id="risk-tab-signal" class="risk-tab-panel">
+            <p class="risk-section-hint">ثقة، مركّب/ذكاء، فلاتر الدخول، ارتداد 15m، EV، ML WF — تبويب «إشارة ودخول».</p>
+            <div class="risk-grid">
+              <label class="modal-field"><span>حد أدنى ثقة البوت %</span>
+                <input type="number" id="risk-bot-confidence" class="field-sm" min="30" max="100" value="60" /></label>
+            </div>
+            <fieldset class="risk-fieldset"><legend>مركّب وذكاء</legend>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-merge-composite" /> <span>دمج المركّب مع البوت</span></label>
+              <div class="risk-grid">
+                <label class="modal-field"><span>score شراء</span>
+                  <input type="number" id="risk-comp-buy" class="field-sm" step="0.1" value="12" /></label>
+                <label class="modal-field"><span>score قوي</span>
+                  <input type="number" id="risk-comp-strong" class="field-sm" step="0.1" value="31" /></label>
+                <label class="modal-field"><span>score mid</span>
+                  <input type="number" id="risk-comp-mid" class="field-sm" step="0.1" value="21" /></label>
+                <label class="modal-field"><span>ADX للـ DI</span>
+                  <input type="number" id="risk-comp-adx" class="field-sm" step="0.1" value="20" /></label>
+              </div>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-ai-promote-wait" /> <span>ترقية انتظار من المركّب</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-ai-regime" checked /> <span>موجّه النظام (regime router)</span></label>
+            </fieldset>
+            <fieldset class="risk-fieldset">
+              <legend>ارتداد 15m (Bounce)</legend>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bounce-15m" /> <span>اشتراط ارتداد 15m</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bounce-tune" /> <span>ضبط تلقائي لحظي</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bounce-rsi" checked /> <span>RSI</span></label>
+              <label class="modal-field"><span>RSI أقصى سياق</span>
+                <input type="number" id="risk-bounce-rsi-max" class="field-sm" step="0.1" value="52" /></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bounce-vwap" checked /> <span>VWAP</span></label>
+              <label class="modal-field"><span>VWAP نسبة قصوى</span>
+                <input type="number" id="risk-bounce-vwap-ratio" class="field-sm" step="0.0001" value="1.006" /></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bounce-stoch" checked /> <span>Stoch</span></label>
+              <label class="modal-field"><span>Stoch K أقصى</span>
+                <input type="number" id="risk-bounce-stoch-max" class="field-sm" step="0.1" value="58" /></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bounce-adx" /> <span>ADX</span></label>
+              <label class="modal-field"><span>ADX أدنى</span>
+                <input type="number" id="risk-bounce-adx-min" class="field-sm" step="0.1" value="14" /></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bounce-macd" checked /> <span>MACD diff أدنى</span></label>
+              <label class="modal-field"><span>MACD diff</span>
+                <input type="number" id="risk-bounce-macd-min" class="field-sm" step="0.0001" value="-0.025" /></label>
+            </fieldset>
+            <fieldset class="risk-fieldset">
+              <legend>القيمة المتوقعة (EV)</legend>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-ev-enabled" checked /> <span>تفعيل بوابة EV</span></label>
+              <div class="risk-grid">
+                <label class="modal-field"><span>EV أدنى %</span>
+                  <input type="number" id="risk-ev-min" class="field-sm" step="0.001" value="0.03" /></label>
+                <label class="modal-field"><span>ترند صاعد</span>
+                  <input type="number" id="risk-ev-up" class="field-sm" step="0.001" value="0.01" /></label>
+                <label class="modal-field"><span>ترند هابط</span>
+                  <input type="number" id="risk-ev-down" class="field-sm" step="0.001" value="0.08" /></label>
+                <label class="modal-field"><span>نطاق</span>
+                  <input type="number" id="risk-ev-range" class="field-sm" step="0.001" value="0.03" /></label>
+                <label class="modal-field"><span>متقلب</span>
+                  <input type="number" id="risk-ev-volatile" class="field-sm" step="0.001" value="0.12" /></label>
+              </div>
+            </fieldset>
+            <fieldset class="risk-fieldset">
+              <legend>Walk-forward (تكلفة / نوافذ)</legend>
+              <div class="risk-grid">
+                <label class="modal-field"><span>تكلفة صفقة %</span>
+                  <input type="number" id="risk-ml-wf-cost" class="field-sm" step="0.001" value="0.08" /></label>
+                <label class="modal-field"><span>أقل تدريب</span>
+                  <input type="number" id="risk-ml-wf-train" class="field-sm" value="40" /></label>
+                <label class="modal-field"><span>نافذة اختبار</span>
+                  <input type="number" id="risk-ml-wf-test" class="field-sm" value="10" /></label>
+              </div>
+            </fieldset>
+          </div>
+
+          <div id="risk-tab-exit" class="risk-tab-panel">
+            <p class="risk-section-hint">TP/SL/تتبع، بيع تلقائي، عتبات RSI، DCA — تبويب «خروج ومراكز».</p>
+            <fieldset class="risk-fieldset"><legend>أهداف الصفقة</legend>
+              <div class="risk-grid">
+                <label class="modal-field"><span>نوع TP</span>
+                  <select id="risk-tp-type" class="field-sm"><option value="percent" selected>%</option><option value="price">سعر</option></select></label>
+                <label class="modal-field"><span>قيمة TP</span>
+                  <input type="number" id="risk-tp-value" class="field-sm" step="0.01" value="2" /></label>
+                <label class="modal-field"><span>نوع SL</span>
+                  <select id="risk-sl-type" class="field-sm"><option value="percent" selected>%</option><option value="price">سعر</option></select></label>
+                <label class="modal-field"><span>قيمة SL</span>
+                  <input type="number" id="risk-sl-value" class="field-sm" step="0.01" value="-1" /></label>
+                <label class="modal-field"><span>تتبع %</span>
+                  <input type="number" id="risk-trailing-pct" class="field-sm" step="0.1" value="3" /></label>
+                <label class="modal-field"><span>أدنى ربح للتتبع %</span>
+                  <input type="number" id="risk-trailing-min-profit" class="field-sm" step="0.1" value="5" /></label>
+                <label class="modal-field"><span>حد شراء %</span>
+                  <input type="number" id="risk-limit-buy" class="field-sm" step="0.01" value="-2" /></label>
+                <label class="modal-field"><span>حد بيع % (0=معطّل)</span>
+                  <input type="number" id="risk-limit-sell" class="field-sm" step="0.01" value="0" /></label>
+              </div>
+            </fieldset>
+            <fieldset class="risk-fieldset"><legend>البيع التلقائي</legend>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bot-trailing" checked /> <span>تفعيل التتبع</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bot-auto-sell" /> <span>bot_auto_sell</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bot-auto-sell-robot" /> <span>يتطلب تشغيل الروبوت</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bot-block-sell-loss" checked /> <span>منع بيع AI أثناء الخسارة</span></label>
+            </fieldset>
+            <fieldset class="risk-fieldset"><legend>عتبات بيع (RSI)</legend>
+              <div class="risk-grid">
+                <label class="modal-field"><span>RSI تشبع بيع</span>
+                  <input type="number" id="risk-sell-ob-rsi" class="field-sm" step="0.1" value="72" /></label>
+                <label class="modal-field"><span>أدنى ربح تشبع %</span>
+                  <input type="number" id="risk-sell-ob-profit" class="field-sm" step="0.01" value="0.35" /></label>
+                <label class="modal-field"><span>RSI ذروة (0=معطّل)</span>
+                  <input type="number" id="risk-sell-peak-rsi" class="field-sm" step="0.1" value="0" /></label>
+                <label class="modal-field"><span>أدنى ربح ذروة %</span>
+                  <input type="number" id="risk-sell-peak-profit" class="field-sm" step="0.01" value="0.5" /></label>
+                <label class="modal-field"><span>حاجز حد شراء (نقاط RSI)</span>
+                  <input type="number" id="risk-sell-ob-buffer" class="field-sm" step="0.1" value="5" /></label>
+              </div>
+            </fieldset>
+            <fieldset class="risk-fieldset"><legend>حواجز ومسارات</legend>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-limit-sell-blocks" /> <span>حد بيع يحجب SELL حتى الهدف</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-signal-bypass-tp" /> <span>SELL يتجاوز حاجز TP</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-trail-bypass-tp" /> <span>تتبع يتجاوز حاجز TP</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-bot-auto-sl" checked /> <span>تنفيذ SL تلقائي</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-apply-exec-filters" checked /> <span>تطبيق فلاتر المخاطر المتقدّمة قبل تنفيذ البوت (كل الاستراتيجيات)</span></label>
+              <label class="modal-field modal-field--row"><input type="checkbox" id="risk-apply-conditions-presets" checked /> <span>تطبيق قوائم «إعدادات البوت الخاصة» (شروط شراء/بيع) على الاستراتيجيات الجاهزة</span></label>
+            </fieldset>
+            <fieldset class="risk-fieldset"><legend>DCA / أوامر أمان</legend>
+              <div class="risk-grid">
+                <label class="modal-field"><span>العدد</span>
+                  <input type="number" id="risk-dca-count" class="field-sm" min="1" max="4" value="3" /></label>
+                <label class="modal-field"><span>المسافة %</span>
+                  <input type="number" id="risk-dca-step" class="field-sm" min="1" max="5" value="3" /></label>
+                <label class="modal-field"><span>حجم نسبة</span>
+                  <input type="number" id="risk-dca-vol" class="field-sm" step="0.1" value="1" /></label>
+                <label class="modal-field"><span>وزن ML %</span>
+                  <input type="number" id="risk-ml-weight" class="field-sm" min="0" max="100" value="30" /></label>
+              </div>
+            </fieldset>
+          </div>
+        </div>
+        </div>
+
+        <div id="risk-main-advanced" class="risk-main-panel">
+          <p class="risk-section-hint">قوائم شروط الشراء/البيع — كما في «إعدادات البوت الخاصة» (<code>buy_conditions</code> / <code>sell_conditions</code>). Ctrl+نقر لاختيار متعدد.</p>
+          <div class="risk-adv-grid">
+            <fieldset class="risk-fieldset">
+              <legend>شروط الشراء</legend>
+              <select id="risk-buy-conditions" class="field-sm risk-multi" multiple size="6">
+                <option value="at_support">عند الدعم</option>
+                <option value="no_buy_at_peak">لا شراء عند القمة</option>
+                <option value="below_vwap">تحت VWAP</option>
+                <option value="no_buy_at_r1">لا شراء عند R1</option>
+              </select>
+            </fieldset>
+            <fieldset class="risk-fieldset">
+              <legend>شروط البيع</legend>
+              <select id="risk-sell-conditions" class="field-sm risk-multi" multiple size="8">
+                <option value="sell_at_overbought">بيع عند التشبع</option>
+                <option value="take_profit">هدف ربح</option>
+                <option value="sell_at_peak">بيع عند الذروة</option>
+                <option value="trailing_stop">تتبع</option>
+                <option value="limit_sell">حد بيع</option>
+                <option value="stop_loss">وقف خسارة</option>
+              </select>
+            </fieldset>
+          </div>
+        </div>
+
+        <div id="risk-main-guide" class="risk-main-panel">
+          <div class="risk-guide-box">
+            <p><strong>دليل مختصر</strong> (من نفس الملفات في PyQt):</p>
+            <ul>
+              <li><strong>عام → أساسي:</strong> البروفايل والاستراتيجية نقطة انطلاق؛ «تطبيق افتراضيات» يدمج قيم <code>STRATEGY_PRESETS</code> من <code>config.py</code>.</li>
+              <li><strong>حدود:</strong> تحمي رأس المال قبل فلاتر RSI؛ القاطع يوقف شراء البوت مؤقتاً عند تقلب عالٍ مع ADX ضعيف.</li>
+              <li><strong>سوق وعرض:</strong> العملة للعرض فقط؛ الماسح يضيّق مرشحي «العملة المقترحة».</li>
+              <li><strong>إشارة ودخول:</strong> ثقة التوصية ثم طبقة الارتداد 15m وEV ثم تكلفة WF.</li>
+              <li><strong>خروج ومراكز:</strong> TP/SL/تتبع، مسارات البيع، عتبات RSI، المركّب، DCA — القائمة الفارغة في «خاص» تعني السماح بكل مسارات البيع كالسابق.</li>
+            </ul>
+            <p class="modal-hint">للتفاصيل الكاملة افتح نافذة المخاطر في تطبيق سطح المكتب → تبويب دليل الإعدادات.</p>
+          </div>
+        </div>
+
+        <input type="file" id="risk-import-file" class="is-hidden" accept="application/json,.json" />
+        <div class="modal-actions modal-actions--risk-footer">
+          <button type="button" class="pill-btn pill-btn--click" id="btn-risk-export">تصدير الإعدادات</button>
+          <button type="button" class="pill-btn pill-btn--click" id="btn-risk-import">استيراد الإعدادات</button>
+          <span class="modal-actions-spacer"></span>
+          <button type="button" class="btn-save-risk" id="btn-risk-save">حفظ</button>
+          <button type="button" class="pill-btn pill-btn--click" id="btn-risk-defaults">استعادة الافتراضي</button>
+          <button type="button" class="pill-btn pill-btn--click" data-close-modal>إغلاق</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/assets/js/risk-modal.js?v=20260401" defer></script>
+  <script src="/assets/js/trading-ui.js?v=20260410" defer></script>
+</body>
+</html>
