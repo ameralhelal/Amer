@@ -769,9 +769,9 @@ class TradingPanel(QWidget):
         _btn_h = 22
         quick_group = QGroupBox(tr("trading_quick_actions"))
         quick_group.setObjectName("QuickActionsGroup")
-        # min/max يُضبطان لاحقاً مع لوحة التوصية في _sync_side_column_widths()
+        # عرض «إجراءات سريعة» مستقل — لا يُضبَط مع لوحة التوصية في _sync_side_column_widths()
         quick_group.setMinimumWidth(190)
-        quick_group.setMaximumWidth(300)
+        quick_group.setMaximumWidth(360)
         quick_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self._quick_group = quick_group
         # ستايل الصندوق الكامل يُطبَّق في _apply_quick_actions_responsive() (موحّد مع حالة السوق)
@@ -999,9 +999,10 @@ class TradingPanel(QWidget):
             f"padding: 5px 10px; min-height: 20px; "
             f"}}"
         )
-        # عرض ثابت تقريباً — مع هامش بعد تقصير النص؛ WordWrap معطّل لتفادي قصّ عمودي في صف محدود الارتفاع
-        _balance_frame_w = 340
-        self.balance_frame.setFixedWidth(_balance_frame_w)
+        # عرض مرن بدون زيادة ارتفاع الصف: سطر واحد (بدون لفّ يوسّع الصندوق عمودياً)
+        self.balance_frame.setMinimumWidth(96)
+        self.balance_frame.setMaximumHeight(38)
+        self.balance_frame.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
         self.balance_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         _bal_layout = QHBoxLayout(self.balance_frame)
         _bal_layout.setContentsMargins(4, 2, 4, 2)
@@ -1012,11 +1013,13 @@ class TradingPanel(QWidget):
             "; qproperty-alignment: AlignCenter;"
         )
         self.balance_label.setWordWrap(False)
-        # طلب المستخدم: توسيط نص الرصيد داخل #BalanceFrame (المساحة قبل زر ↻)، وليس السعر
+        # طلب المستخدم: توسيط نص الرصيد داخل #BalanceFrame؛ stretches يمين/يسار أوضح من QLabel وحدها بـ Expanding
         self.balance_label.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         self.balance_label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
-        self.balance_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        _bal_layout.addWidget(self.balance_label, 1)
+        self.balance_label.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
+        _bal_layout.addStretch(1)
+        _bal_layout.addWidget(self.balance_label, 0, Qt.AlignmentFlag.AlignCenter)
+        _bal_layout.addStretch(1)
         self.balance_refresh_btn = QPushButton("↻")
         self.balance_refresh_btn.setFixedSize(22, 22)
         self.balance_refresh_btn.setToolTip(tr("balance_refresh_tooltip"))
@@ -1032,19 +1035,26 @@ class TradingPanel(QWidget):
         self._balance_refresh_prev_text: str = ""
         self.price_label = QLabel(tr("trading_price") + ": 0.00 $")
         self.price_label.setObjectName("TradingPriceDisplay")
-        self.price_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # عرض مرن، سطر واحد فقط — لا لفّ (اللفّ كان يرفع ارتفاع الصف)
+        self.price_label.setMinimumWidth(72)
+        self.price_label.setWordWrap(False)
+        self.price_label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         self._set_price_label_style_neutral()
-        self.price_label.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self.price_label.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
         self.price_day_pct_label = QLabel("—")
         self.price_day_pct_label.setObjectName("TradingDayPctDisplay")
+        self.price_day_pct_label.setMinimumWidth(52)
         self.price_day_pct_label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         self.price_day_pct_label.setToolTip(tr("trading_day_pct_tooltip"))
         self.price_day_pct_label.setStyleSheet(
             f"color: {TOP_TEXT_MUTED}; background: transparent; border: none; "
             "font-weight: bold; font-size: 13px; padding-left: 2px;"
         )
-        self.price_day_pct_label.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self.price_day_pct_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         _price_center = QWidget()
+        self._price_center_widget = _price_center
+        _price_center.setMinimumWidth(120)
+        _price_center.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
         _price_center.setStyleSheet("background: transparent; border: none;")
         _price_center.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         _price_center_lt = QHBoxLayout(_price_center)
@@ -1054,7 +1064,6 @@ class TradingPanel(QWidget):
         _price_center_lt.addWidget(self.price_day_pct_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         _price_row_frame = QFrame()
-        # يسمح بسطر ثانٍ للرصيد عند اللفّ داخل إطار عرض ثابت
         _price_row_frame.setMinimumHeight(40)
         _price_row_frame.setMaximumHeight(56)
         _price_row_frame.setStyleSheet("QFrame { background: transparent; border: none; }")
@@ -1065,7 +1074,7 @@ class TradingPanel(QWidget):
         price_balance_row.setContentsMargins(0, 0, 0, 0)
         _bal_cluster = QWidget()
         _bal_cluster.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-        _bal_cluster.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        _bal_cluster.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
         _bal_cluster_lt = QHBoxLayout(_bal_cluster)
         _bal_cluster_lt.setContentsMargins(0, 0, 0, 0)
         _bal_cluster_lt.setSpacing(6)
@@ -1211,9 +1220,9 @@ class TradingPanel(QWidget):
         # اسم فريد + محدّد في الستايل — وإلا قاعدة QGroupBox تُطبَّق على كل الصناديق الداخلية (صفوف الاستراتيجية…)
         # فيضاعف الـ padding ويضيّق مساحة النص فيُقصّ ويبدو تداخلاً مع الصف التالي.
         ai_group.setObjectName("AIPanelGroup")
-        # min/max يُضبطان مع «إجراءات سريعة» في _sync_side_column_widths()
-        ai_group.setMinimumWidth(190)
-        ai_group.setMaximumWidth(300)
+        # min/max يُحدَّثان في _sync_side_column_widths() — عرض كافٍ لعناوين عربية بسطر واحد
+        ai_group.setMinimumWidth(195)
+        ai_group.setMaximumWidth(320)
         ai_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         try:
             ai_group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -1233,8 +1242,8 @@ class TradingPanel(QWidget):
         ai_header_lt.setContentsMargins(8, 10, 8, 0)
         ai_header_lt.setSpacing(6)
         ai_body_layout = QVBoxLayout()
-        ai_body_layout.setSpacing(11)
-        ai_body_layout.setContentsMargins(8, 0, 8, 10)
+        ai_body_layout.setSpacing(2)
+        ai_body_layout.setContentsMargins(4, 0, 4, 6)
         # صف علوي: OFF يسار ← مسافة ← الإعدادات يمين
         self.robot_btn = QPushButton("OFF")
         self.robot_btn.setCheckable(True)
@@ -1317,50 +1326,57 @@ class TradingPanel(QWidget):
         self._ai_ring_block.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         _arb_lt = QVBoxLayout(self._ai_ring_block)
         _arb_lt.setContentsMargins(0, 0, 0, 0)
-        _arb_lt.setSpacing(6)
-        _box_style = (
-            f"QGroupBox {{ font-size: 11px; background-color: {TOP_INNER_BG}; border: 1px solid {TOP_INNER_BORDER}; "
-            f"border-radius: 8px; padding: 2px 6px 2px 6px; margin-top: 1px; min-height: 22px; }}"
+        _arb_lt.setSpacing(2)
+        _ai_row_ss = (
+            f"QFrame#AIRecoRow {{ background: transparent; border: none; "
+            f"border-bottom: 1px solid {TOP_INNER_BORDER}; border-radius: 0; padding: 0px; }}"
         )
-        _box_style_flat_top = (
-            f"QGroupBox {{ font-size: 11px; background-color: {TOP_INNER_BG}; border: 1px solid {TOP_INNER_BORDER}; "
-            f"border-radius: 8px; padding: 2px 6px 2px 6px; margin-top: 0px; min-height: 22px; }}"
-        )
+
+        def _ai_row() -> QFrame:
+            r = QFrame()
+            r.setObjectName("AIRecoRow")
+            r.setStyleSheet(_ai_row_ss)
+            r.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+            r.setMinimumHeight(22)
+            r.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+            return r
         # لون عناوين اللوحة = نفس لون خلفية زر HI تقريباً
         _title_style = f"color: {UI_INFO}; font-size: 10px; font-weight: bold;"
         _value_style = f"color: {TOP_TEXT_PRIMARY}; font-weight: bold; font-size: 11px;"
-        # عناوين الصفوف: بعرض الكلمة فقط (بدون عمود ثابت) لإفساح أكبر مساحة للقيم.
-        _ai_key_w = 126
+        # عناوين الصفوف: سطر واحد (WordWrap مع عرض ضيق كان يكسّر العربية إلى سطرين)
+        _ai_key_max_w = 168
 
         def _ai_key_lbl(top: bool = False, key_width: int | None = None) -> QLabel:
-            kw = int(key_width) if key_width is not None else _ai_key_w
+            mw = int(key_width) if key_width is not None else _ai_key_max_w
             w = QLabel()
             w.setStyleSheet(_title_style)
             w.setWordWrap(False)
-            w.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
-            # العنوان دائماً يسار سطره، والقيمة تأخذ المساحة المتبقية يميناً.
+            w.setMaximumWidth(mw)
+            w.setMinimumWidth(1)
+            w.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
             if top:
                 w.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             else:
                 w.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             return w
 
-        # صف الاستراتيجية: QGroupBox مثل باقي صفوف اللوحة حتى يملأ الصف عرض العمود (QFrame كان يظهر ضيّقاً/في المنتصف تحت RTL)
-        self.strategy_row_frame = QGroupBox()
-        self.strategy_row_frame.setTitle("")
-        self.strategy_row_frame.setStyleSheet(_box_style_flat_top)
-        # لا fixed — 28px أقل من ارتفاع QGroupBox (حدود + padding + min-height) فيُقصّ النص ويبدو تداخلاً مع الصف التالي
-        self.strategy_row_frame.setMinimumHeight(26)
-        self.strategy_row_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.strategy_row_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        def _ai_row_value_policy(lbl: QLabel, *, min_w: int = 40) -> None:
+            lbl.setMinimumWidth(int(min_w))
+            lbl.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
+
+        # صفوف مضغوطة: QFrame + خط سفلي فقط — بدون صندوق QGroupBox عريض لكل سطر
+        self.strategy_row_frame = _ai_row()
+        self.strategy_row_frame.setMinimumHeight(24)
         _str_lt = QHBoxLayout()
-        _str_lt.setContentsMargins(6, 2, 6, 2)
-        _str_lt.setSpacing(8)
+        _str_lt.setContentsMargins(4, 1, 4, 1)
+        _str_lt.setSpacing(4)
         _str_key = QLabel(str(tr("risk_strategy_current")).rstrip(" :"))
         _str_key.setStyleSheet(_title_style)
         _str_key.setWordWrap(False)
+        _str_key.setMaximumWidth(_ai_key_max_w)
+        _str_key.setMinimumWidth(1)
         _str_key.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        _str_key.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        _str_key.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.strategy_display_label = QLabel("")
         self.strategy_display_label.setWordWrap(False)
         self.strategy_display_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -1370,64 +1386,47 @@ class TradingPanel(QWidget):
         self.strategy_display_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         _str_lt.addWidget(_str_key, 0)
         _str_lt.addWidget(self.strategy_display_label, 1)
-        self.apply_private_on_presets_btn = QPushButton()
-        self.apply_private_on_presets_btn.setCheckable(True)
-        self.apply_private_on_presets_btn.setToolTip(tr("risk_apply_conditions_presets_hint"))
-        self.apply_private_on_presets_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.apply_private_on_presets_btn.setMaximumHeight(26)
-        self.apply_private_on_presets_btn.setStyleSheet("font-size: 10px; font-weight: bold; padding: 2px 10px;")
-        self.apply_private_on_presets_btn.toggled.connect(self._on_quick_apply_private_presets_toggled)
-        _str_lt.addWidget(self.apply_private_on_presets_btn, 0)
         self.strategy_row_frame.setLayout(_str_lt)
-        self._sync_quick_apply_private_presets_btn(_cfg)
         _arb_lt.addWidget(self.strategy_row_frame)
 
-        # وضع الصفقة: نفس هيكل «عدد الصفقات» (QGroupBox + LTR)
-        self.trade_mode_row_frame = QGroupBox()
-        self.trade_mode_row_frame.setTitle("")
-        self.trade_mode_row_frame.setStyleSheet(_box_style)
-        self.trade_mode_row_frame.setMinimumHeight(26)
-        self.trade_mode_row_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.trade_mode_row_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        self.trade_mode_row_frame = _ai_row()
         _tm_lt = QHBoxLayout()
-        _tm_lt.setContentsMargins(6, 2, 6, 2)
-        _tm_lt.setSpacing(8)
+        _tm_lt.setContentsMargins(4, 1, 4, 1)
+        _tm_lt.setSpacing(4)
         self.ai_trade_mode_key_label = QLabel("وضع الصفقة" if get_language() == "ar" else "Trade mode")
         self.ai_trade_mode_key_label.setStyleSheet(_title_style)
         self.ai_trade_mode_key_label.setWordWrap(False)
+        self.ai_trade_mode_key_label.setMaximumWidth(_ai_key_max_w)
+        self.ai_trade_mode_key_label.setMinimumWidth(1)
         self.ai_trade_mode_key_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.ai_trade_mode_key_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        self.ai_trade_mode_key_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.market_trade_mode_label = QLabel("—")
         self.market_trade_mode_label.setObjectName("MarketTradeModeLabel")
         self.market_trade_mode_label.setWordWrap(False)
         self.market_trade_mode_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.market_trade_mode_label.setTextFormat(Qt.TextFormat.PlainText)
         self.market_trade_mode_label.setStyleSheet(f"color: {TOP_TEXT_SECONDARY}; font-size: 11px;")
-        self.market_trade_mode_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        _ai_row_value_policy(self.market_trade_mode_label)
         _tm_lt.addWidget(self.ai_trade_mode_key_label, 0)
-        _tm_lt.addStretch(1)
         _tm_lt.addWidget(
             self.market_trade_mode_label,
-            0,
+            1,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.trade_mode_row_frame.setLayout(_tm_lt)
         _arb_lt.addWidget(self.trade_mode_row_frame)
 
-        self.suggested_symbol_frame = QGroupBox()
-        self.suggested_symbol_frame.setTitle("")
-        self.suggested_symbol_frame.setStyleSheet(_box_style)
-        self.suggested_symbol_frame.setMinimumHeight(26)
-        self.suggested_symbol_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.suggested_symbol_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        self.suggested_symbol_frame = _ai_row()
         _ss_lt = QHBoxLayout()
-        _ss_lt.setContentsMargins(6, 2, 6, 2)
-        _ss_lt.setSpacing(8)
+        _ss_lt.setContentsMargins(4, 1, 4, 1)
+        _ss_lt.setSpacing(4)
         self.ai_suggested_symbol_key_label = QLabel(tr("ai_suggested_symbol_title"))
         self.ai_suggested_symbol_key_label.setStyleSheet(_title_style)
         self.ai_suggested_symbol_key_label.setWordWrap(False)
+        self.ai_suggested_symbol_key_label.setMaximumWidth(_ai_key_max_w)
+        self.ai_suggested_symbol_key_label.setMinimumWidth(1)
         self.ai_suggested_symbol_key_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.ai_suggested_symbol_key_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        self.ai_suggested_symbol_key_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.ai_suggested_symbol_btn = ClickableLabel(tr("ai_suggested_symbol_scan"))
         self.ai_suggested_symbol_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.ai_suggested_symbol_btn.setToolTip(tr("ai_suggested_symbol_tooltip"))
@@ -1437,27 +1436,21 @@ class TradingPanel(QWidget):
         self.ai_suggested_symbol_btn.setStyleSheet(
             f"color: {TOP_TEXT_PRIMARY}; font-size: 11px; padding: 0px;"
         )
-        self.ai_suggested_symbol_btn.setMinimumWidth(96)
-        self.ai_suggested_symbol_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.ai_suggested_symbol_btn.setMinimumWidth(44)
+        self.ai_suggested_symbol_btn.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
         self.ai_suggested_symbol_btn.clicked.connect(self._on_click_suggested_symbol)
         _ss_lt.addWidget(self.ai_suggested_symbol_key_label, 0)
-        _ss_lt.addStretch(1)
         _ss_lt.addWidget(
             self.ai_suggested_symbol_btn,
-            0,
+            1,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.suggested_symbol_frame.setLayout(_ss_lt)
         _arb_lt.addWidget(self.suggested_symbol_frame)
 
-        # عدد الصفقات المفتوحة / قوة الحجم / التقلب — منقول من حالة السوق بنفس تنسيق صفوف اللوحة
-        self.open_positions_count_frame = QGroupBox()
-        self.open_positions_count_frame.setTitle("")
-        self.open_positions_count_frame.setMinimumHeight(26)
-        self.open_positions_count_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.open_positions_count_frame.setStyleSheet(_box_style_flat_top)
+        self.open_positions_count_frame = _ai_row()
         _opc_lt = QHBoxLayout()
-        _opc_lt.setContentsMargins(6, 2, 6, 2)
+        _opc_lt.setContentsMargins(4, 1, 4, 1)
         _opc_lt.setSpacing(4)
         _opc_title = _ai_key_lbl()
         _opc_title.setText(tr("open_pos_count_label"))
@@ -1467,24 +1460,19 @@ class TradingPanel(QWidget):
         self.ai_open_positions_value_label.setStyleSheet(_value_style)
         self.ai_open_positions_value_label.setWordWrap(False)
         self.ai_open_positions_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.ai_open_positions_value_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        _opc_lt.addStretch(1)
+        _ai_row_value_policy(self.ai_open_positions_value_label, min_w=36)
         _opc_lt.addWidget(
             self.ai_open_positions_value_label,
-            0,
+            1,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.open_positions_count_frame.setLayout(_opc_lt)
-        self.open_positions_count_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         _arb_lt.addWidget(self.open_positions_count_frame)
         ai_body_layout.addWidget(self._ai_ring_block)
 
-        self.volume_strength_frame = QGroupBox()
-        self.volume_strength_frame.setTitle("")
-        self.volume_strength_frame.setMinimumHeight(26)
-        self.volume_strength_frame.setStyleSheet(_box_style)
+        self.volume_strength_frame = _ai_row()
         _vol_lt = QHBoxLayout()
-        _vol_lt.setContentsMargins(6, 2, 6, 2)
+        _vol_lt.setContentsMargins(4, 1, 4, 1)
         _vol_lt.setSpacing(4)
         _vol_title = _ai_key_lbl()
         _vol_title.setText(tr("market_info_volume"))
@@ -1496,23 +1484,18 @@ class TradingPanel(QWidget):
         )
         self.ai_volume_strength_value_label.setWordWrap(False)
         self.ai_volume_strength_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.ai_volume_strength_value_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        _vol_lt.addStretch(1)
+        _ai_row_value_policy(self.ai_volume_strength_value_label)
         _vol_lt.addWidget(
             self.ai_volume_strength_value_label,
-            0,
+            1,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.volume_strength_frame.setLayout(_vol_lt)
-        self.volume_strength_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         ai_body_layout.addWidget(self.volume_strength_frame)
 
-        self.volatility_frame = QGroupBox()
-        self.volatility_frame.setTitle("")
-        self.volatility_frame.setMinimumHeight(26)
-        self.volatility_frame.setStyleSheet(_box_style)
+        self.volatility_frame = _ai_row()
         _vlt_lt = QHBoxLayout()
-        _vlt_lt.setContentsMargins(6, 2, 6, 2)
+        _vlt_lt.setContentsMargins(4, 1, 4, 1)
         _vlt_lt.setSpacing(4)
         _vlt_title = _ai_key_lbl()
         _vlt_title.setText(tr("market_info_volatility"))
@@ -1524,23 +1507,18 @@ class TradingPanel(QWidget):
         )
         self.ai_volatility_value_label.setWordWrap(False)
         self.ai_volatility_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.ai_volatility_value_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        _vlt_lt.addStretch(1)
+        _ai_row_value_policy(self.ai_volatility_value_label)
         _vlt_lt.addWidget(
             self.ai_volatility_value_label,
-            0,
+            1,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.volatility_frame.setLayout(_vlt_lt)
-        self.volatility_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         ai_body_layout.addWidget(self.volatility_frame)
 
-        self.buy_pressure_frame = QGroupBox()
-        self.buy_pressure_frame.setTitle("")
-        self.buy_pressure_frame.setMinimumHeight(26)
-        self.buy_pressure_frame.setStyleSheet(_box_style)
+        self.buy_pressure_frame = _ai_row()
         _bp_lt = QHBoxLayout()
-        _bp_lt.setContentsMargins(6, 2, 6, 2)
+        _bp_lt.setContentsMargins(4, 1, 4, 1)
         _bp_lt.setSpacing(4)
         _bp_title = _ai_key_lbl()
         _bp_title.setText(tr("indicator_buy_pressure"))
@@ -1552,23 +1530,18 @@ class TradingPanel(QWidget):
         )
         self.ai_buy_pressure_value_label.setWordWrap(False)
         self.ai_buy_pressure_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.ai_buy_pressure_value_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        _bp_lt.addStretch(1)
+        _ai_row_value_policy(self.ai_buy_pressure_value_label)
         _bp_lt.addWidget(
             self.ai_buy_pressure_value_label,
-            0,
+            1,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.buy_pressure_frame.setLayout(_bp_lt)
-        self.buy_pressure_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         ai_body_layout.addWidget(self.buy_pressure_frame)
 
-        self.fear_greed_frame = QGroupBox()
-        self.fear_greed_frame.setTitle("")
-        self.fear_greed_frame.setMinimumHeight(26)
-        self.fear_greed_frame.setStyleSheet(_box_style)
+        self.fear_greed_frame = _ai_row()
         _fg_lt = QHBoxLayout()
-        _fg_lt.setContentsMargins(6, 2, 6, 2)
+        _fg_lt.setContentsMargins(4, 1, 4, 1)
         _fg_lt.setSpacing(4)
         _fg_title = _ai_key_lbl()
         _fg_title.setText(tr("indicator_fear_greed"))
@@ -1580,24 +1553,18 @@ class TradingPanel(QWidget):
         )
         self.ai_fear_greed_value_label.setWordWrap(False)
         self.ai_fear_greed_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.ai_fear_greed_value_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        _fg_lt.addStretch(1)
+        _ai_row_value_policy(self.ai_fear_greed_value_label)
         _fg_lt.addWidget(
             self.ai_fear_greed_value_label,
-            0,
+            1,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.fear_greed_frame.setLayout(_fg_lt)
-        self.fear_greed_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         ai_body_layout.addWidget(self.fear_greed_frame)
 
-        # آخر صفقة — سطر واحد
-        self.last_trade_frame = QGroupBox()
-        self.last_trade_frame.setTitle("")
-        self.last_trade_frame.setMinimumHeight(26)
-        self.last_trade_frame.setStyleSheet(_box_style)
+        self.last_trade_frame = _ai_row()
         _lt = QHBoxLayout()
-        _lt.setContentsMargins(6, 2, 6, 2)
+        _lt.setContentsMargins(4, 1, 4, 1)
         _lt.setSpacing(4)
         _last_trade_title = _ai_key_lbl()
         _last_trade_title.setText(tr("trading_last_trade_title"))
@@ -1607,16 +1574,14 @@ class TradingPanel(QWidget):
         self.last_trade_label.setStyleSheet(_value_style)
         self.last_trade_label.setWordWrap(False)
         self.last_trade_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.last_trade_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        _lt.addStretch(1)
+        _ai_row_value_policy(self.last_trade_label)
         _lt.addWidget(
             self.last_trade_label,
-            0,
+            1,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.last_trade_pnl_label = None
         self.last_trade_frame.setLayout(_lt)
-        self.last_trade_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         ai_body_layout.addWidget(self.last_trade_frame)
         # التوصية مخفية من لوحة التوصية (حسب طلب المستخدم) — تبقى داخلياً لنص التحليل فقط.
         self.recommendation_frame = None
@@ -1624,12 +1589,10 @@ class TradingPanel(QWidget):
         # لا نعرض «الاستراتيجية المقترحة» في لوحة التوصية (طلب المستخدم)؛ يبقى اتباع الاقتراح في الخلفية إن كان مفعّلاً.
         self.strategy_suggestion_label = None
         # التحليل — سطر واحد (اتجاه + نسبة الثقة + لقطة مؤشرات)؛ التلميح يكرر النص مع وقت التحديث
-        self.analysis_frame = QGroupBox()
-        self.analysis_frame.setTitle("")
-        self.analysis_frame.setMinimumHeight(28)
-        self.analysis_frame.setStyleSheet(_box_style)
+        self.analysis_frame = _ai_row()
+        self.analysis_frame.setMinimumHeight(24)
         _ana_lt = QHBoxLayout()
-        _ana_lt.setContentsMargins(6, 2, 6, 2)
+        _ana_lt.setContentsMargins(4, 1, 4, 1)
         _ana_lt.setSpacing(4)
         _ana_title = _ai_key_lbl()
         _ana_title.setText(tr("ai_analysis"))
@@ -1637,29 +1600,23 @@ class TradingPanel(QWidget):
         self.ai_analysis_label = QLabel("—")
         self.ai_analysis_label.setObjectName("AIAnalysisValue")
         self.ai_analysis_label.setStyleSheet(_value_style)
-        self.ai_analysis_label.setWordWrap(False)
-        self.ai_analysis_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.ai_analysis_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.ai_analysis_label.setWordWrap(True)
+        self.ai_analysis_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        _ai_row_value_policy(self.ai_analysis_label, min_w=44)
         try:
             self.ai_analysis_label.setAttribute(Qt.WidgetAttribute.WA_TextNoClip, True)
         except Exception:
             pass
-        _ana_lt.addStretch(1)
         _ana_lt.addWidget(
             self.ai_analysis_label,
-            0,
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            1,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
         )
         self.analysis_frame.setLayout(_ana_lt)
-        self.analysis_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         ai_body_layout.addWidget(self.analysis_frame)
-        # ثقة تنفيذ البوت الحالية (من bot_decide) — تحت سطر التحليل
-        self.bot_conf_min_frame = QGroupBox()
-        self.bot_conf_min_frame.setTitle("")
-        self.bot_conf_min_frame.setMinimumHeight(26)
-        self.bot_conf_min_frame.setStyleSheet(_box_style)
+        self.bot_conf_min_frame = _ai_row()
         _bcm_lt = QHBoxLayout()
-        _bcm_lt.setContentsMargins(6, 2, 6, 2)
+        _bcm_lt.setContentsMargins(4, 1, 4, 1)
         _bcm_lt.setSpacing(4)
         self.ai_bot_conf_min_title = _ai_key_lbl()
         self.ai_bot_conf_min_title.setText(tr("ai_bot_exec_confidence_row"))
@@ -1672,15 +1629,13 @@ class TradingPanel(QWidget):
         self.ai_bot_conf_min_value_label.setWordWrap(False)
         self.ai_bot_conf_min_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.ai_bot_conf_min_value_label.setToolTip(tr("ai_bot_exec_confidence_tooltip"))
-        self.ai_bot_conf_min_value_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        _bcm_lt.addStretch(1)
+        _ai_row_value_policy(self.ai_bot_conf_min_value_label, min_w=36)
         _bcm_lt.addWidget(
             self.ai_bot_conf_min_value_label,
-            0,
+            1,
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         self.bot_conf_min_frame.setLayout(_bcm_lt)
-        self.bot_conf_min_frame.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         ai_body_layout.addWidget(self.bot_conf_min_frame)
         self._refresh_bot_exec_confidence_display("WAIT", 0.0, None, None)
         ai_body_layout.addStretch(1)
@@ -1691,7 +1646,7 @@ class TradingPanel(QWidget):
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
         )
         self._ai_panel_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._ai_panel_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._ai_panel_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._ai_panel_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._ai_panel_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._ai_panel_scroll.setStyleSheet(
@@ -2319,7 +2274,6 @@ class TradingPanel(QWidget):
             self.market_type_btn.setText(self._format_market_type_text(cfg))
         self._update_market_trade_mode_label(cfg)
         self.max_trades_btn.setText(_format_max_trades_quick_label(cfg))
-        self._sync_quick_apply_private_presets_btn(cfg)
         self.tp_btn.setText(self._format_tp_text(cfg))
         if hasattr(self, "limit_buy_btn") and self.limit_buy_btn:
             self.limit_buy_btn.setText(self._format_limit_buy_text(cfg))
@@ -2332,28 +2286,6 @@ class TradingPanel(QWidget):
             self.auto_sell_btn.setChecked(on)
             self.auto_sell_btn.setText(tr("quick_auto_sell_on") if on else tr("quick_auto_sell_off"))
             self.auto_sell_btn.blockSignals(False)
-
-    def _sync_quick_apply_private_presets_btn(self, cfg: dict | None = None) -> None:
-        btn = getattr(self, "apply_private_on_presets_btn", None)
-        if btn is None:
-            return
-        if cfg is None:
-            cfg = load_config()
-        on = bool(cfg.get("apply_conditions_to_presets", True))
-        btn.blockSignals(True)
-        btn.setChecked(on)
-        btn.setText(tr("quick_private_on_presets_on") if on else tr("quick_private_on_presets_off"))
-        btn.blockSignals(False)
-
-    def _on_quick_apply_private_presets_toggled(self, checked: bool) -> None:
-        try:
-            cfg = load_config()
-            cfg["apply_conditions_to_presets"] = bool(checked)
-            save_config(cfg)
-            invalidate_config_disk_cache()
-            self._sync_quick_apply_private_presets_btn(cfg)
-        except Exception:
-            log.exception("apply_conditions_to_presets quick toggle failed")
 
     def _update_market_trade_mode_label(self, cfg: dict = None) -> None:
         if not hasattr(self, "market_trade_mode_label") or self.market_trade_mode_label is None:
@@ -2569,17 +2501,25 @@ class TradingPanel(QWidget):
         self._apply_quick_actions_responsive()
 
     def _sync_side_column_widths(self) -> None:
-        """عرض متطابق لعمودي إجراءات سريعة ولوحة التوصية، يزيد مع توسّع عرض اللوحة."""
+        """إجراءات سريعة: عرض واسع للأزرار. لوحة التوصية: عرض منفصل حتى لا تُلفّ العناوين العربية."""
         w = int(self.width() or 0)
         w_eff = max(640, w)
-        side_min = max(185, min(245, int(round(w_eff * 0.195))))
-        side_max = max(260, min(480, int(round(w_eff * 0.36))))
-        if side_max < side_min + 50:
-            side_max = side_min + 50
-        for gb in (getattr(self, "_quick_group", None), getattr(self, "_ai_group", None)):
-            if gb is not None:
-                gb.setMinimumWidth(side_min)
-                gb.setMaximumWidth(side_max)
+        q_min = max(185, min(245, int(round(w_eff * 0.195))))
+        q_max = max(260, min(480, int(round(w_eff * 0.36))))
+        if q_max < q_min + 50:
+            q_max = q_min + 50
+        qg = getattr(self, "_quick_group", None)
+        if qg is not None:
+            qg.setMinimumWidth(q_min)
+            qg.setMaximumWidth(q_max)
+        ai_min = max(195, min(248, int(round(w_eff * 0.192))))
+        ai_max = max(255, min(360, int(round(w_eff * 0.33))))
+        if ai_max < ai_min + 50:
+            ai_max = ai_min + 50
+        ag = getattr(self, "_ai_group", None)
+        if ag is not None:
+            ag.setMinimumWidth(ai_min)
+            ag.setMaximumWidth(ai_max)
 
     def _apply_quick_actions_responsive(self):
         """تصغير/تكبير قسم إجراءات سريعة (عرض + خط + ارتفاع) حسب حجم النافذة."""
@@ -4164,9 +4104,11 @@ class TradingPanel(QWidget):
             ind_out = dict(indicators)
             ind_out["chart_interval"] = str(interval or self._chart_interval or "1m")
             self._last_indicators = ind_out
-            # قبل emit: أي استثناء في slots المركز (مؤشرات/ملخص/شارت) يوقف التنفيذ بعد emit فيُجمّد الشريط العلوي.
             self._update_market_indicators_display()
-            # التوصية تُحسب مرة واحدة داخل AIPanel → recommendation_updated → update_ai_panel_display (لا تكرار get_recommendation هنا)
+            try:
+                self._sync_top_recommendation_panel(ind_out)
+            except Exception:
+                log.exception("sync top recommendation before indicators_updated emit")
             try:
                 self.indicators_updated.emit(interval, ind_out)
             except Exception:
@@ -4983,15 +4925,30 @@ class TradingPanel(QWidget):
                 f"تم الوصول إلى حد الخسارة اليومية ({limit} USDT). إيقاف فتح صفقات جديدة.",
             )
             return
-        last_price = self.ws.frames["1m"].last_price
-        if not last_price:
-            QMessageBox.warning(self, "السعر", "لا يوجد سعر حالياً. انتظر تحديث البيانات.")
-            return
         use_futures = _config_use_futures(cfg)
         selected_trade = trade
         selected_symbol = (trade.get("symbol") or "").strip().upper()
         if not selected_symbol or float(trade.get("quantity") or 0) <= 0:
             self._notify_error_popup(title="تنبيه", text="بيانات الصف غير صالحة.")
+            return
+        # كان last_price يُؤخذ من شموع الشارت فقط → بيع STOUSDT يُسجَّل بسعر زوج الشارت (مثل DOGE).
+        last_price = float(self._close_ref_price_for_symbol(selected_symbol) or 0)
+        if last_price <= 0:
+            try:
+                lp_ws = float(self.ws.frames["1m"].last_price or 0)
+            except Exception:
+                lp_ws = 0.0
+            cur = (getattr(self, "current_symbol", None) or "").strip().upper()
+            if selected_symbol == cur and lp_ws > 0:
+                last_price = lp_ws
+        if last_price <= 0:
+            QMessageBox.warning(
+                self,
+                "السعر",
+                "لا يوجد سعر مرجعي لرمز هذا الصف. اعرض نفس الرمز في الشارت أو انتظر التحديث."
+                if get_language() == "ar"
+                else "No reference price for this row. Show the same symbol on the chart or wait for data.",
+            )
             return
 
         self._order_in_progress = True
@@ -8011,14 +7968,18 @@ class TradingPanel(QWidget):
         if hasattr(self, "ai_recommend_label") and self.ai_recommend_label:
             self.ai_recommend_label.setText(rec_ar)
             self.ai_recommend_label.setStyleSheet(color)
-        # سطر التحليل: التوصية والثقة فقط (بدون سعر/RSI في العرض)
-        _ana_txt = f"{rec_ar} — {confidence:.1f}%"
+        # سطر التحليل: عرض الرقم فقط (الثقة %) — الشرح الطويل يبقى في التلميح وحالة السوق
+        _ana_txt = f"{confidence:.1f}%"
+        _full = ""
+        if isinstance(_indicators, dict):
+            _full = str(getattr(self, "_last_market_decision_line", "") or "").strip()
         self.ai_analysis_label.setText(_ana_txt)
         _ts = time.strftime("%H:%M:%S", time.localtime())
+        _tip_detail = _full if _full else f"{rec_ar} — {confidence:.1f}%"
         _tip = (
-            f"{_ana_txt}\nآخر تحديث عرض: {_ts}\n\n{tr('ai_analysis_engine_tooltip')}"
+            f"{_tip_detail}\nآخر تحديث عرض: {_ts}\n\n{tr('ai_analysis_engine_tooltip')}"
             if get_language() == "ar"
-            else f"{_ana_txt}\nDisplay refresh: {_ts}\n\n{tr('ai_analysis_engine_tooltip')}"
+            else f"{_tip_detail}\nDisplay refresh: {_ts}\n\n{tr('ai_analysis_engine_tooltip')}"
         )
         self.ai_analysis_label.setToolTip(_tip)
         self.ai_analysis_label.setStyleSheet(color)

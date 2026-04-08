@@ -196,6 +196,14 @@ class CenterPanel(QWidget):
         if isinstance(indicators, dict):
             self._last_indicators = indicators
 
+    def _safe_apply_chart_analysis_levels(self, interval: str, indicators: dict) -> None:
+        """لا يقطع سلسلة indicators_updated عند خطأ في رسم مستويات الشارت."""
+        try:
+            if isinstance(indicators, dict):
+                self.page_chart.set_analysis_levels(indicators)
+        except Exception:
+            log.exception("set_analysis_levels failed")
+
     def _on_indicator_section_clicked(self, key: str):
         """ملخص الذكاء أُزيل؛ أي مؤشر → نافذة منفصلة (شارت المؤشر + التفاصيل)."""
         if key == "ai_summary":
@@ -431,14 +439,11 @@ class CenterPanel(QWidget):
 
         trading_panel.candle_updated.connect(self.page_chart.update_candle)
         trading_panel.indicators_updated.connect(self._save_indicators)
+        trading_panel.indicators_updated.connect(self.page_ai_panel.update_indicators)
         trading_panel.indicators_updated.connect(self.page_indicators.update_indicators)
-        trading_panel.indicators_updated.connect(
-            lambda iv, ind: self.page_chart.set_analysis_levels(ind)
-        )
+        trading_panel.indicators_updated.connect(self._safe_apply_chart_analysis_levels)
         trading_panel.composite_signal_updated.connect(self.page_chart.set_composite_signal)
         trading_panel.market_info_updated.connect(self.page_market.update_market_info)
-        # لوحة التوصية (AI Panel) أولاً حتى تُصدِر التوصية الرسمية قبل تحديث ملخص الذكاء
-        trading_panel.indicators_updated.connect(self.page_ai_panel.update_indicators)
         trading_panel.indicators_updated.connect(self._chart_rec_bridge.update_indicators)
         trading_panel.market_info_updated.connect(
             lambda info: self.page_ai_panel.update_market_info(
@@ -450,8 +455,13 @@ class CenterPanel(QWidget):
                 info if isinstance(info, dict) else {}
             )
         )
-        # تحديث النص في الأعلى قبل منطق البوت حتى لا يمنع استثناء في البوت ظهور التوصية
-        self.page_ai_panel.recommendation_updated.connect(trading_panel.update_ai_panel_display)
+        def _safe_update_ai_display(rec, conf, ind, mi):
+            try:
+                trading_panel.update_ai_panel_display(rec, conf, ind, mi)
+            except Exception:
+                log.exception("update_ai_panel_display failed")
+
+        self.page_ai_panel.recommendation_updated.connect(_safe_update_ai_display)
         self.page_ai_panel.recommendation_updated.connect(trading_panel.on_ai_recommendation)
         self.page_ai_panel.recommendation_updated.connect(
             lambda rec, _c, _i, _m: self._chart_rec_bridge.set_official_recommendation(rec)
