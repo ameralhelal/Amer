@@ -2486,7 +2486,7 @@ class TradingPanel(QWidget):
             ind = getattr(self, "_last_indicators", None)
             if isinstance(ind, dict) and ind:
                 self._sync_top_recommendation_panel(ind, cfg)
-                self._update_market_indicators_display()
+                self._safe_update_market_indicators_display()
             self._update_market_info_display()
             try:
                 self.status_bar_message.emit(tr("ai_panel_refresh_done"))
@@ -3388,8 +3388,13 @@ class TradingPanel(QWidget):
     # ============================================================
     # إشارات الربط — متوافقة مع WebSocketManager (فريمات)
     # ============================================================
+    def _ws_interval_matches_chart(self, interval) -> bool:
+        a = str(interval or "").strip().lower()
+        b = str(getattr(self, "_chart_interval", "") or "").strip().lower()
+        return bool(a) and a == b
+
     def update_price(self, interval, new_price):
-        if interval != self._chart_interval:
+        if not self._ws_interval_matches_chart(interval):
             return
         self._check_local_day_midnight_rollover()
         self._last_price_update_time = time.time()
@@ -4031,7 +4036,7 @@ class TradingPanel(QWidget):
         )
 
     def update_candle(self, interval, candles):
-        if interval == self._chart_interval:
+        if self._ws_interval_matches_chart(interval):
             self._last_price_update_time = time.time()  # أي بيانات شموع = اتصال فعّال
             # تحديث لحظي: ارسال مباشرة لتجنب أي تأخير في واجهة الشارت
             self.candle_updated.emit(interval, candles)
@@ -4060,19 +4065,21 @@ class TradingPanel(QWidget):
         try:
             self._sync_top_recommendation_panel(ind)
             self._update_market_info_display()
+            self._update_market_swing_peak_label()
         except Exception:
             log.warning("recommendation panel tick failed", exc_info=True)
 
     def update_indicators(self, interval, indicators):
         if not isinstance(indicators, dict):
             return
+        iv = str(interval or "").strip().lower()
         # 1h / 4h: حفظ لاتجاه متعدد الأطر — وإذا كانا هما إطار الشارت يجب أيضاً ملء `_last_indicators`
         # (وإلا يبقى المؤشر المركّب وحالة السوق بلا بيانات لأنها تعتمد على `_last_indicators` فقط).
         # عندما يكون إطار الشارت غير 1h/4h لا نحدّث لوحة المؤشرات من هذه الحزمة — لتفادي إفراغ المركّب قبل وصول إطار الشارت.
-        if interval in ("1h", "4h"):
-            setattr(self, f"_last_indicators_{interval}", indicators)
+        if iv in ("1h", "4h"):
+            setattr(self, f"_last_indicators_{iv}", indicators)
             try:
-                hist = self._mtf_close_history_1h if interval == "1h" else self._mtf_close_history_4h
+                hist = self._mtf_close_history_1h if iv == "1h" else self._mtf_close_history_4h
                 if len(hist) == 0:
                     tail = indicators.get("closed_closes_tail")
                     if isinstance(tail, list):
@@ -4084,7 +4091,7 @@ class TradingPanel(QWidget):
                             except (TypeError, ValueError):
                                 pass
                 t_open = int(indicators.get("last_candle_open_ms") or 0)
-                prev_t_attr = f"_mtf_spark_last_t_open_{interval}"
+                prev_t_attr = f"_mtf_spark_last_t_open_{iv}"
                 prev_t = int(getattr(self, prev_t_attr, 0) or 0)
                 # إغلاق الشمعة المفتوحة يعطي نفس «last» لـ 1h و4h في التيك — نلحق فقط عند دورة شمعة جديدة بإغلاق الشمعة السابقة
                 if t_open > 0 and prev_t > 0 and t_open != prev_t:
@@ -4099,26 +4106,34 @@ class TradingPanel(QWidget):
                 self._update_mtf_htf_readout()
             except Exception:
                 pass
-        if interval == self._chart_interval:
+        if self._ws_interval_matches_chart(iv):
             # نسخة موحّدة للمحرّك والبوت: إطار الشارت داخل المؤشرات (بدونها فلاتر 15m/4h وHTF تخطئ)
             ind_out = dict(indicators)
-            ind_out["chart_interval"] = str(interval or self._chart_interval or "1m")
+            ind_out["chart_interval"] = str(iv or self._chart_interval or "1m")
             self._last_indicators = ind_out
-            self._update_market_indicators_display()
+            try:
+                self._last_market_decision_line = AIPanel.decision_explain_line_for_market_status(
+                    ind_out,
+                    self._last_market_info or {},
+                )
+                self._last_market_decision_ts = float(time.time())
+            except Exception:
+                pass
+            self._safe_update_market_indicators_display()
             try:
                 self._sync_top_recommendation_panel(ind_out)
             except Exception:
                 log.exception("sync top recommendation before indicators_updated emit")
             try:
-                self.indicators_updated.emit(interval, ind_out)
+                self.indicators_updated.emit(iv, ind_out)
             except Exception:
                 log.exception("indicators_updated: فشل أحد مستقبلات الإشارة (اللوحة العلوية حُدّثت بالفعل)")
 
     def update_market_info(self, interval, info):
-        if interval == self._chart_interval:
+        if self._ws_interval_matches_chart(interval):
             self._last_market_info = info if isinstance(info, dict) else None
             self.market_info_updated.emit(info)
-            self._update_market_indicators_display()
+            self._safe_update_market_indicators_display()
             self._update_market_info_display()
             if isinstance(self._last_indicators, dict) and self._last_indicators:
                 self._sync_top_recommendation_panel(self._last_indicators)
@@ -4236,6 +4251,16 @@ class TradingPanel(QWidget):
                 self.composite_signal_updated.emit({"clear": True})
         except Exception:
             pass
+
+    def _safe_update_market_indicators_display(self) -> None:
+        try:
+            self._update_market_indicators_display()
+        except Exception:
+            log.exception("_update_market_indicators_display failed")
+        try:
+            self._update_market_swing_peak_label()
+        except Exception:
+            log.exception("_update_market_swing_peak_label failed")
 
     def _update_market_indicators_display(self):
         """عرض أهم مؤشرات السكالبينغ في قسم حالة السوق (ADX/VWAP/ATR/StochRSI)."""
@@ -4603,7 +4628,6 @@ class TradingPanel(QWidget):
             )
         self.market_indicators_label.setText(html)
         self.market_indicators_label.setStyleSheet("font-size: 11px; background: transparent;")
-        self._update_market_swing_peak_label()
         self._update_mtf_htf_readout()
         self._apply_composite_signal_ui(ind, info)
         # تنبيه عند اقتراب السعر من S1 أو S2 أو R1 (مرة كل 60 ثانية كحد أقصى)
@@ -7986,17 +8010,18 @@ class TradingPanel(QWidget):
         self._refresh_bot_exec_confidence_display(recommendation, confidence, _indicators, _market_info)
 
     def _get_market_decision_line(self, ind: dict, info: dict) -> str:
-        """نص سبب القرار في حالة السوق — يفضّل النص المأخوذ من نفس تحديث لوحة التوصية لتفادي أي عدم تزامن."""
-        txt = str(getattr(self, "_last_market_decision_line", "") or "").strip()
-        if txt:
-            ts = float(getattr(self, "_last_market_decision_ts", 0.0) or 0.0)
-            if ts > 0:
-                hhmmss = time.strftime("%H:%M:%S", time.localtime(ts))
-                return f"{txt} — {tr('market_status_decision_updated_at').format(t=hhmmss)}"
-            return txt
-        txt = AIPanel.decision_explain_line_for_market_status(ind, info)
+        """نص قرار اللوحة من المؤشرات/السياق الحاليين — الكاش احتياط فقط (الأولوية القديمة للكاش كانت تُجمّد السطر)."""
+        txt = ""
+        try:
+            txt = str(AIPanel.decision_explain_line_for_market_status(ind, info) or "").strip()
+        except Exception:
+            pass
+        if not txt:
+            txt = str(getattr(self, "_last_market_decision_line", "") or "").strip()
         now = time.strftime("%H:%M:%S", time.localtime())
-        return f"{txt} — {tr('market_status_decision_updated_at').format(t=now)}"
+        if txt:
+            return f"{txt} — {tr('market_status_decision_updated_at').format(t=now)}"
+        return f"{tr('market_status_peak_waiting')} — {tr('market_status_decision_updated_at').format(t=now)}"
     def set_suggested_strategy(self, strategy_key: str):
         """تحديث مربع الاستراتيجية المقترحة إن وُجد؛ وإلا يبقى اتباع الاقتراح في الخلفية فقط."""
         lbl = getattr(self, "strategy_suggestion_label", None)

@@ -41,6 +41,7 @@ class FrameStream:
         self.running = False
         self._last_indicator_run_time = 0.0  # لتحديث التحليل أثناء الشمعة (كل ~5 ثوانٍ — لحظي)
         self._indicators_inflight = False  # منع تكدّس خيوط حساب المؤشرات عند ضغط الرسائل
+        self._indicators_inflight_since = 0.0  # لإعادة تعيين قفل عالق
         self._last_candles_emit_time = 0.0  # تقليل ضغط إعادة رسم الشارت أثناء الشمعة المفتوحة
 
         # لا نحمّل التاريخ هنا حتى لا نجمّد الواجهة — التحميل يتم في خيط run_kline
@@ -57,7 +58,17 @@ class FrameStream:
                 "interval": self.interval,
                 "limit": 500
             }
-            data = requests.get(url, params=params, timeout=15).json()
+            r = requests.get(url, params=params, timeout=15)
+            r.raise_for_status()
+            data = r.json()
+            if not isinstance(data, list):
+                log.warning(
+                    "Binance klines unexpected payload for %s %s: %s",
+                    self.symbol,
+                    self.interval,
+                    type(data).__name__,
+                )
+                return
 
             self.candles = [
                 (
@@ -105,6 +116,19 @@ class FrameStream:
         except Exception:
             pass
 
+    def _release_stuck_indicator_lock(self) -> None:
+        """إن علق حساب المؤشرات دون إنهاء، نفتح القفل بعد ~60s حتى لا تتوقف التحديثات."""
+        if not self._indicators_inflight:
+            return
+        if time.time() - float(self._indicators_inflight_since or 0.0) < 60.0:
+            return
+        log.warning(
+            "FrameStream %s %s: _indicators_inflight stuck >60s, resetting",
+            self.interval,
+            self.symbol,
+        )
+        self._indicators_inflight = False
+
     # --------------------------------------------------------
     # WebSocket للكلاين (مع إعادة اتصال تلقائي)
     # --------------------------------------------------------
@@ -117,6 +141,7 @@ class FrameStream:
         max_wait = 60.0
 
         def on_message(ws, message):
+            self._release_stuck_indicator_lock()
             data = json.loads(message)
             k = data["k"]
             candle = (
@@ -141,11 +166,26 @@ class FrameStream:
                 # حساب المؤشرات في خيط منفصل مع حارس يمنع تكدّس خيوط متوازية.
                 if not self._indicators_inflight:
                     self._indicators_inflight = True
+                    self._indicators_inflight_since = time.time()
                     def _compute():
                         try:
                             self._last_indicator_run_time = time.time()
-                            self.compute_market_info()
-                            self.compute_indicators()
+                            try:
+                                self.compute_market_info()
+                            except Exception:
+                                log.exception(
+                                    "FrameStream %s %s: compute_market_info failed",
+                                    self.symbol,
+                                    self.interval,
+                                )
+                            try:
+                                self.compute_indicators()
+                            except Exception:
+                                log.exception(
+                                    "FrameStream %s %s: compute_indicators failed",
+                                    self.symbol,
+                                    self.interval,
+                                )
                         finally:
                             self._indicators_inflight = False
                     threading.Thread(target=_compute, daemon=True).start()
@@ -178,11 +218,26 @@ class FrameStream:
                     and not self._indicators_inflight
                 ):
                     self._last_indicator_run_time = now
+                    self._indicators_inflight = True
+                    self._indicators_inflight_since = time.time()
                     def _compute_during_candle():
                         try:
-                            self._indicators_inflight = True
-                            self.compute_market_info()
-                            self.compute_indicators()
+                            try:
+                                self.compute_market_info()
+                            except Exception:
+                                log.exception(
+                                    "FrameStream %s %s: compute_market_info failed (during candle)",
+                                    self.symbol,
+                                    self.interval,
+                                )
+                            try:
+                                self.compute_indicators()
+                            except Exception:
+                                log.exception(
+                                    "FrameStream %s %s: compute_indicators failed (during candle)",
+                                    self.symbol,
+                                    self.interval,
+                                )
                         finally:
                             self._indicators_inflight = False
                     threading.Thread(target=_compute_during_candle, daemon=True).start()
