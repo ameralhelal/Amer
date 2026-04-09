@@ -920,6 +920,11 @@ class WebSocketManager:
         self._last_price_push_time: float = 0.0
         self._poll_running: bool = False
         self._price_poll_thread: threading.Thread | None = None
+        # إقلاع خفيف: فريم الشارت أولاً، ثم بقية الأطر بفاصل زمني (يقلّل ضغط REST/CPU عند الفتح)
+        self._primary_interval: str = "1m"
+        self._bootstrap_done: bool = False
+        self._deferred_cancel = threading.Event()
+        self._deferred_stagger_sec: float = 0.55
 
         # فريمات متعددة (جاهزة للمستقبل)
         self.frames = {
@@ -936,11 +941,44 @@ class WebSocketManager:
     # --------------------------------------------------------
     # start / stop
     # --------------------------------------------------------
+    def _deferred_start_remaining_frames(self) -> None:
+        order = ("1m", "5m", "15m", "1h", "4h", "1d")
+        stagger = max(0.15, float(getattr(self, "_deferred_stagger_sec", 0.55) or 0.55))
+        cancel = self._deferred_cancel
+        for iv in order:
+            if cancel.wait(timeout=stagger):
+                break
+            f = self.frames.get(iv)
+            if f is None or getattr(f, "running", False):
+                continue
+            try:
+                f.start()
+            except Exception:
+                log.exception("Deferred FrameStream start failed for %s %s", self.symbol, iv)
+
     def start(self):
-        for f in self.frames.values():
-            f.start()
+        if self._bootstrap_done:
+            return
+        self._bootstrap_done = True
+        self._deferred_cancel.clear()
+        primary = str(getattr(self, "_primary_interval", None) or "1m").strip().lower()
+        if primary not in self.frames:
+            primary = "1m"
+        pf = self.frames.get(primary)
+        if pf is not None and not getattr(pf, "running", False):
+            try:
+                pf.start()
+            except Exception:
+                log.exception("Primary FrameStream start failed for %s %s", self.symbol, primary)
+        threading.Thread(
+            target=self._deferred_start_remaining_frames,
+            name=f"ws-deferred-{self.symbol}",
+            daemon=True,
+        ).start()
 
     def stop(self):
+        self._deferred_cancel.set()
+        self._bootstrap_done = False
         self._poll_running = False
         for f in self.frames.values():
             f.stop()
@@ -1005,6 +1043,7 @@ class WebSocketManager:
         if not f:
             interval = "1m"
             f = self.frames["1m"]
+        self._primary_interval = str(interval).strip().lower()
         if prev is not None and prev is not f:
             prev.on_price = None
             prev.on_candles = None
@@ -1021,4 +1060,10 @@ class WebSocketManager:
         f.on_candles = on_candles
         f.on_indicators = on_indicators
         f.on_market_info = on_market_info
+        # تبديل إطار الشارت: يجب أن يعمل الفريم فوراً حتى لو لم يُشغَّل بعد من الإقلاع التدريجي
+        if not getattr(f, "running", False):
+            try:
+                f.start()
+            except Exception:
+                log.exception("set_callbacks: FrameStream start failed for %s %s", self.symbol, interval)
         self._start_binance_spot_price_poll()

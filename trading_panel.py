@@ -4919,7 +4919,18 @@ class TradingPanel(QWidget):
                 f"تم الوصول إلى حد الخسارة اليومية ({limit} USDT). إيقاف فتح صفقات جديدة.",
             )
             return
-        last_price = self.ws.frames["1m"].last_price
+        last_price = 0.0
+        try:
+            af = getattr(self.ws, "_active_frame", None) if self.ws else None
+            if af is not None and getattr(af, "last_price", None):
+                last_price = float(af.last_price)
+        except (TypeError, ValueError):
+            last_price = 0.0
+        if not last_price:
+            try:
+                last_price = float(self.ws.frames["1m"].last_price or 0)
+            except Exception:
+                last_price = 0.0
         if not last_price:
             QMessageBox.warning(self, "السعر", "لا يوجد سعر حالياً. انتظر تحديث البيانات.")
             return
