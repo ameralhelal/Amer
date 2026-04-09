@@ -200,8 +200,8 @@ def _explain_merge_key(mk: str, comp_score: float, ar: bool) -> str:
 
     if mk == "m_merge_st_bear_high_composite_need_momentum":
         if ar:
-            return f"مركّب عالٍ لكن Supertrend هابط بدون زخم (هستو/MACD) — انتظار"
-        return f"High composite but bear ST without momentum — WAIT"
+            return "مركّب عالٍ لكن Supertrend هابط بدون زخم (هستو/MACD) — انتظار"
+        return "High composite but bear ST without momentum — WAIT"
 
     if mk == "m_merge_struct_bear_blocked_composite_buy":
         if ar:
@@ -210,8 +210,8 @@ def _explain_merge_key(mk: str, comp_score: float, ar: bool) -> str:
 
     if mk == "m_merge_st_bear_mid_composite_need_momentum":
         if ar:
-            return f"Supertrend هابط + مركّب متوسط — ينقص زخم (هستو/MACD) — انتظار"
-        return f"Bear ST + mid composite — needs momentum — WAIT"
+            return "Supertrend هابط + مركّب متوسط — ينقص زخم (هستو/MACD) — انتظار"
+        return "Bear ST + mid composite — needs momentum — WAIT"
 
     return ""
 

@@ -409,7 +409,6 @@ def compute_composite_signal(
     lc_open = _f(ind.get("last_candle_open"))
     lc_close = _f(ind.get("last_candle_close"))
     lc_low = _f(ind.get("last_candle_low"))
-    lc_high = _f(ind.get("last_candle_high"))
     candle_bull = bool(lc_close > lc_open and lc_open > 0 and lc_close > 0)
     lower_wick_reject = bool(
         candle_bull

@@ -10,15 +10,14 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-# يُعرَض في /api/hub-info ورأس HTTP للصفحة الرئيسية — غيّره عند تحديث الواجهة
-HUB_BUILD = "20260410"
-
 import requests
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+
+from app.etoro_config import get_etoro_credentials
 
 _BASE = Path(__file__).resolve().parent.parent
 _STATIC = _BASE / "static"
@@ -33,7 +32,8 @@ try:
 except ImportError:
     EtoroClient = None  # type: ignore[misc, assignment]
 
-from app.etoro_config import get_etoro_credentials
+# يُعرَض في /api/hub-info ورأس HTTP للصفحة الرئيسية — غيّره عند تحديث الواجهة
+HUB_BUILD = "20260410"
 
 _MAIN_PY = Path(__file__).resolve()
 
@@ -142,25 +142,25 @@ def _sma_last(vals: list[float], n: int) -> float | None:
     return sum(vals[-n:]) / n
 
 
-def _vwap_typical(h: list[float], l: list[float], c: list[float], vol: list[float]) -> float | None:
+def _vwap_typical(h: list[float], low: list[float], c: list[float], vol: list[float]) -> float | None:
     if not c or len(c) != len(vol) or len(h) != len(c):
         return None
     num = 0.0
     den = 0.0
     for i in range(len(c)):
-        tp = (h[i] + l[i] + c[i]) / 3.0
+        tp = (h[i] + low[i] + c[i]) / 3.0
         vi = vol[i]
         num += tp * vi
         den += vi
     return num / den if den > 0 else None
 
 
-def _atr_simple(h: list[float], l: list[float], c: list[float], period: int = 14) -> float | None:
+def _atr_simple(h: list[float], low: list[float], c: list[float], period: int = 14) -> float | None:
     if len(c) < period + 1 or len(h) != len(c):
         return None
     trs: list[float] = []
     for i in range(1, len(c)):
-        tr = max(h[i] - l[i], abs(h[i] - c[i - 1]), abs(l[i] - c[i - 1]))
+        tr = max(h[i] - low[i], abs(h[i] - c[i - 1]), abs(low[i] - c[i - 1]))
         trs.append(tr)
     if len(trs) < period:
         return None

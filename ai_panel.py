@@ -1,15 +1,15 @@
 import logging
 
 from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QTextEdit, QGroupBox, QGridLayout, QFrame
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal
 
 from composite_signal import compute_composite_signal
-from market_decision_detail import build_decision_indicator_explain
-
-_log_ai = logging.getLogger("trading.ai_panel")
 from config import load_config, load_config_cached
+from market_decision_detail import build_decision_indicator_explain
 from market_status_readout import engine_market_readout_bundle
 from translations import get_language
+
+_log_ai = logging.getLogger("trading.ai_panel")
 
 # تلوين «قرار اللوحة»: تصنيف منع شراء / منع بيع من مفاتيح الدمج والقواعد
 _MARKET_ACCENT_BLOCK_SELL_MK = frozenset(

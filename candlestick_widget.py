@@ -134,7 +134,6 @@ class CandlestickChart(QWidget):
         if pt is not None:
             return float(pt[1])
         range_min = float(geo["range_min"])
-        range_max = float(geo["range_max"])
         range_diff = float(geo["range_diff"])
         chart_h = max(1, int(geo["chart_h"]))
         price = range_min + (float(chart_bottom) - py) / float(chart_h) * range_diff
@@ -1025,16 +1024,15 @@ class CandlestickChart(QWidget):
         )
         # خط السعر الحالي: أبيض (سنرسم المستطيل بعد أرقام عمود السعر حتى لا تتداخل)
         line_color = QColor(255, 255, 255)
-        _price_box = None  # (y, price_txt, countdown_txt)
+        # نص السعر + العد التنازلي يُرسمان في إطار ثابت بعمود السعر؛ الخط الأفقي وحده يتبع السعر
+        _price_box_labels = None  # (price_txt, countdown_txt)
         if price_line is not None and range_min <= price_line <= range_max:
             y_line = map_price(price_line)
             painter.setPen(QPen(line_color, 0.7, Qt.PenStyle.SolidLine))
             painter.drawLine(left_margin, y_line, plot_right, y_line)
-            # السعر بنفس تنسيق لوحة السوق (قيم أقل من سنت تُعرض كاملة)
             price_txt = format_price(price_line)
-            # عداد انتهاء الشمعة (يُحدَّث من ChartPanel.setCandleCountdown)
             countdown_txt = self._candle_countdown_text or ""
-            _price_box = (y_line, price_txt, countdown_txt)
+            _price_box_labels = (price_txt, countdown_txt)
 
         # خط تتبع الماوس: خط أبيض منقط (سنرسم مستطيل السعر بعد أرقام عمود السعر)
         cy = getattr(self, "_crosshair_y", None)
@@ -1316,15 +1314,13 @@ class CandlestickChart(QWidget):
             txt = format_price(p)
             painter.drawText(chart_right + 2, y + 4, price_axis_width - 6, 20, Qt.AlignmentFlag.AlignLeft, txt)
 
-        # مستطيل السعر فقط (بدون عداد انتهاء الشمعة — المساحة للشموع)
-        if _price_box is not None:
-            # مستطيل السعر على يمين الشارت مع سطر ثانٍ لعدّاد انتهاء الشمعة
-            y_line, price_txt, countdown_txt = _price_box
+        # مستطيل السعر: موضع عمودي ثابت في منتصف منطقة الشموع (لا يتبع y_line) — القيمة تتحدّث فقط
+        if _price_box_labels is not None:
+            price_txt, countdown_txt = _price_box_labels
             box_w = price_axis_width - 2
             box_h = 32  # سطران: السعر + العد التنازلي
             tx = chart_right + 1
-            ty = int(y_line) - (box_h // 2)
-            ty = max(chart_top, min(chart_bottom - box_h, ty))
+            ty = chart_top + max(0, (chart_h - box_h) // 2)
             bg_color = QColor(255, 255, 255, 255)
             border_color = QColor(210, 210, 215)
             painter.setPen(QPen(border_color, 1))
@@ -1338,7 +1334,7 @@ class CandlestickChart(QWidget):
                 ty + 1,
                 box_w - 8,
                 box_h // 2,
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                 price_txt,
             )
             # عدّاد انتهاء الشمعة (سطر سفلي بخط أصغر، إن وُجد)
@@ -1349,7 +1345,7 @@ class CandlestickChart(QWidget):
                     ty + box_h // 2,
                     box_w - 8,
                     box_h // 2 - 2,
-                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
                     countdown_txt,
                 )
 

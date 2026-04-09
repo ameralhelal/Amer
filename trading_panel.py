@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QFrame, QScrollArea,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QTimer, QObject, QThread
-from PyQt6.QtGui import QColor, QFont
+from PyQt6.QtGui import QFont
 from api_settings_window import open_api_settings_window, get_decrypted_credentials, request_unlock_or_set_password, load_etoro_settings
 from risk_settings_window import RiskSettingsWindow
 from quick_settings_dialogs import (
@@ -575,12 +575,27 @@ class MarketScannerThread(QThread):
             self.scan_error.emit(str(e))
 
 
-def _balance_bar_line(amount: float, *, ar: bool) -> str:
+def _balance_bar_line(amount: float) -> str:
     """سطر الرصيد بجانب السعر. عزل اتجاه يسار→يمين للأرقام وUSDT يمنع قصّ/خلط النص في واجهة RTL."""
     num = f"{amount:,.2f} USDT"
-    if ar:
-        return f"الرصيد: \u2066{num}\u2069"
-    return f"Balance: \u2066{num}\u2069"
+    return f"\u2066{num}\u2069"
+
+
+def _detach_qthread_noblock(th: QThread | None) -> None:
+    """يطلب إيقاف QThread دون wait() على خيط الواجهة (يقلّل التجمّد عند انتهاء أمر/إغلاق)."""
+    if th is None:
+        return
+    try:
+        if not th.isRunning():
+            th.deleteLater()
+            return
+        th.finished.connect(th.deleteLater)
+        th.quit()
+    except Exception:
+        try:
+            th.deleteLater()
+        except Exception:
+            pass
 
 
 class TradingPanel(QWidget):
@@ -1007,7 +1022,7 @@ class TradingPanel(QWidget):
         _bal_layout = QHBoxLayout(self.balance_frame)
         _bal_layout.setContentsMargins(4, 2, 4, 2)
         _bal_layout.setSpacing(4)
-        self.balance_label = QLabel(tr("status_balance_none") if get_language() == "ar" else "Balance: —")
+        self.balance_label = QLabel(tr("status_balance_none"))
         self.balance_label.setStyleSheet(
             f"font-weight: bold; color: {TOP_TEXT_SECONDARY}; font-size: 11px;"
             "; qproperty-alignment: AlignCenter;"
@@ -1033,14 +1048,14 @@ class TradingPanel(QWidget):
         self._balance_refresh_thread: QThread | None = None
         self._balance_refresh_worker: _BalanceBarFetchWorker | None = None
         self._balance_refresh_prev_text: str = ""
-        self.price_label = QLabel(tr("trading_price") + ": 0.00 $")
+        self.price_label = QLabel("0.00 $")
         self.price_label.setObjectName("TradingPriceDisplay")
-        # عرض مرن، سطر واحد فقط — لا لفّ (اللفّ كان يرفع ارتفاع الصف)
-        self.price_label.setMinimumWidth(72)
+        # عرض ثابت للإطار — لا يتمدد مع طول نص السعر (النص يبقى متمركزاً داخل الصندوق)
+        self.price_label.setFixedWidth(240)
         self.price_label.setWordWrap(False)
         self.price_label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         self._set_price_label_style_neutral()
-        self.price_label.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
+        self.price_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.price_day_pct_label = QLabel("—")
         self.price_day_pct_label.setObjectName("TradingDayPctDisplay")
         self.price_day_pct_label.setMinimumWidth(52)
@@ -1053,7 +1068,7 @@ class TradingPanel(QWidget):
         self.price_day_pct_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         _price_center = QWidget()
         self._price_center_widget = _price_center
-        _price_center.setMinimumWidth(120)
+        _price_center.setMinimumWidth(300)
         _price_center.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
         _price_center.setStyleSheet("background: transparent; border: none;")
         _price_center.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
@@ -3403,7 +3418,7 @@ class TradingPanel(QWidget):
         self._last_price = new_f
         # تحديث عرض السعر فقط (خفيف جداً) — لا تشغيل منطق ثقيل هنا لئلا تتجمّد الشاشة عند الضغط على الأزرار
         if hasattr(self, "price_label") and self.price_label:
-            self.price_label.setText(f"{tr('trading_price')}: {format_price(new_price)} $")
+            self.price_label.setText(f"{format_price(new_price)} $")
             if prev > 0:
                 tol = max(abs(prev) * 1e-9, 1e-12)
                 if new_f > prev + tol:
@@ -5120,8 +5135,7 @@ class TradingPanel(QWidget):
     def _on_close_position_finished(self, ok: bool, msg: str, symbol: str, close_all: bool):
         self._stop_order_timeout_timer()
         if getattr(self, "_close_thread", None):
-            self._close_thread.quit()
-            self._close_thread.wait(3000)
+            _detach_qthread_noblock(self._close_thread)
             self._close_thread = None
         self._close_worker = None
         # eToro: تسجيل position_id كمُغلق قبل إعادة تفعيل الواجهة — وإلا يُعاد وقف الخسارة لنفس الصف في نفس الثانية.
@@ -5862,7 +5876,6 @@ class TradingPanel(QWidget):
         إلا بعد محاولة تحقق سريع من المنصة (خصوصاً للفيوتشر).
         """
         sym = (symbol or "").strip().upper() or None
-        removed_ui = False
         try:
             cfg = load_config()
             use_futures = _config_use_futures(cfg)
@@ -5914,7 +5927,6 @@ class TradingPanel(QWidget):
         # إذا لم نستطع التحقق أو لم نجد مركزاً: لا نحذف فوراً من الواجهة.
         # بعض المنصات تُرجع "no position" بشكل مؤقت/متذبذب؛ الحذف الفوري كان يُخفي صفقات مفتوحة فعلياً.
         # نعتمد مزامنة لاحقة لتأكيد الحالة بدلاً من الإزالة المباشرة.
-        removed_ui = False
         if hasattr(self, "bot_status_label") and self.bot_status_label:
             self.bot_status_label.setText(
                 "لا يوجد مركز حسب المنصة حالياً — لم نحذف الصفوف تلقائياً، سيتم التحقق بالمزامنة."
@@ -6355,8 +6367,7 @@ class TradingPanel(QWidget):
                         pass
                     try:
                         if th is not None:
-                            th.quit()
-                            th.wait(3000)
+                            _detach_qthread_noblock(th)
                     except Exception:
                         pass
                     self._order_thread = None
@@ -6574,8 +6585,7 @@ class TradingPanel(QWidget):
             return
         thread = getattr(worker, "_thread", None) if worker else None
         if thread is not None:
-            thread.quit()
-            thread.wait(3000)
+            _detach_qthread_noblock(thread)
         self._order_thread = None
         self._order_worker = None
         self._stop_order_timeout_timer()
@@ -7579,7 +7589,7 @@ class TradingPanel(QWidget):
                 self._cached_usdt_balance = float(balance)
             except (TypeError, ValueError):
                 pass
-            text = _balance_bar_line(float(balance), ar=(get_language() == "ar"))
+            text = _balance_bar_line(float(balance))
             _set_text(text)
             if etoro_breakdown is not None and hasattr(self, "balance_label") and self.balance_label:
                 self.balance_label.setToolTip(_etoro_balance_tooltip(etoro_breakdown))
@@ -7618,9 +7628,9 @@ class TradingPanel(QWidget):
                     self._cached_usdt_balance = float(bd.available)
                 except (TypeError, ValueError):
                     pass
-                text = _balance_bar_line(float(bd.available), ar=(get_language() == "ar"))
+                text = _balance_bar_line(float(bd.available))
             else:
-                text = _balance_bar_line(float(balance), ar=(get_language() == "ar"))
+                text = _balance_bar_line(float(balance))
             _set_text(text)
             if etoro_bd is not None and hasattr(self, "balance_label") and self.balance_label:
                 self.balance_label.setToolTip(_etoro_balance_tooltip(etoro_bd))
@@ -8717,15 +8727,14 @@ class TradingPanel(QWidget):
             th = getattr(self, "_symbol_load_thread", None)
             if th is not None and th.isRunning():
                 th.requestInterruption()
-                th.wait(2000)
+                _detach_qthread_noblock(th)
         except Exception:
             pass
         for attr in ("_order_thread", "_close_thread", "_etoro_resolve_thread"):
             try:
                 th = getattr(self, attr, None)
                 if th is not None and th.isRunning():
-                    th.quit()
-                    th.wait(2000)
+                    _detach_qthread_noblock(th)
             except Exception:
                 pass
 

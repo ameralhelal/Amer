@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QButtonGroup, QLabel
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QWheelEvent
 
@@ -38,78 +38,32 @@ class ChartPanel(QWidget):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(8)
 
-        # عمود اليسار: نوع الشارت ثم أدوات الرسم
+        # عمود اليسار: SR + فيبوناتشي فقط (بدون أنواع شارت ولا باقي أدوات الرسم)
         draw_col = QVBoxLayout()
-        draw_col.setSpacing(2)
+        draw_col.setSpacing(4)
         _ar = get_language() == "ar"
         _btn_style = "font-size: 10px; min-width: 26px; max-width: 26px; min-height: 22px; max-height: 22px; padding: 0;"
-        chart_type_label = QLabel(tr("chart_type"))
-        chart_type_label.setStyleSheet("color: #aaa; font-size: 9px;")
-        draw_col.addWidget(chart_type_label)
-        self._chart_type_group = QButtonGroup(self)
-        self._chart_type_group.setExclusive(True)
-        _chart_btns = []
-        for key, symbol, tip_ar, tip_en in [
-            ("candle", "🕯", "شموع يابانية", "Candles"),
-            ("heikin_ashi", "⬛", "هايكين آشي", "Heikin Ashi"),
-            ("line", "〰", "خط الإغلاق", "Line (Close)"),
-            ("area", "▀", "منطقة تحت السعر", "Area"),
-            ("hollow", "▢", "شموع مجوفة", "Hollow candles"),
-        ]:
-            b = QPushButton(symbol)
-            b.setStyleSheet(_btn_style)
-            b.setFixedSize(26, 22)
-            b.setCheckable(True)
-            b.setToolTip(tip_ar if _ar else tip_en)
-            b.setProperty("chart_type", key)
-            self._chart_type_group.addButton(b)
-            draw_col.addWidget(b)
-            _chart_btns.append((key, b))
-        self._chart_type_buttons = dict(_chart_btns)
-        self._chart_type_buttons["candle"].setChecked(True)
-        draw_col.addSpacing(6)
-        draw_tools_label = QLabel(tr("draw_tools"))
-        draw_tools_label.setStyleSheet("color: #aaa; font-size: 9px;")
-        draw_col.addWidget(draw_tools_label)
+        tools_lbl = QLabel("SR · %")
+        tools_lbl.setStyleSheet("color: #aaa; font-size: 9px;")
+        draw_col.addWidget(tools_lbl)
 
-        # زر إظهار/إخفاء الدعم والمقاومة (Pivot/S/R)
         self._btn_toggle_sr = QPushButton("SR")
         self._btn_toggle_sr.setStyleSheet(_btn_style)
         self._btn_toggle_sr.setFixedSize(26, 22)
         self._btn_toggle_sr.setCheckable(True)
         self._btn_toggle_sr.setToolTip("إظهار/إخفاء الدعم والمقاومة" if _ar else "Show/Hide support & resistance")
         draw_col.addWidget(self._btn_toggle_sr)
-        self._draw_btn_group = QButtonGroup(self)
-        self._draw_btn_group.setExclusive(True)
-        self._btn_draw_hline = QPushButton("―")
-        self._btn_draw_line = QPushButton("∕")
-        self._btn_draw_channel = QPushButton("∥")
+
         self._btn_draw_fib = QPushButton("%")
-        self._btn_draw_rect = QPushButton("▭")
-        self._btn_draw_pan = QPushButton("✋")
-        self._btn_draw_pan.setCheckable(True)
-        self._btn_draw_pan.setChecked(True)
-        self._btn_draw_clear = QPushButton("✕")
-        for btn in (self._btn_draw_hline, self._btn_draw_line, self._btn_draw_channel, self._btn_draw_fib, self._btn_draw_rect, self._btn_draw_pan, self._btn_draw_clear):
-            btn.setStyleSheet(_btn_style)
-            btn.setFixedSize(26, 22)
-        for btn in (self._btn_draw_hline, self._btn_draw_line, self._btn_draw_channel, self._btn_draw_fib, self._btn_draw_rect, self._btn_draw_pan):
-            btn.setCheckable(True)
-            self._draw_btn_group.addButton(btn)
-        self._btn_draw_hline.setToolTip("خط أفقي — انقر مرة على الشارت لرسم خط عند السعر" if _ar else "Horizontal line — click once on chart to draw at price")
-        self._btn_draw_line.setToolTip("خط مستقيم — اسحب من نقطة إلى نقطة" if _ar else "Straight line — drag from point to point")
-        self._btn_draw_channel.setToolTip("قناة تلقائية من الشموع — للإخفاء اضغط تحريك (✋)" if _ar else "Auto channel from candles — click Pan (✋) to hide")
-        self._btn_draw_fib.setToolTip(("فيبوناتشي تلقائي من الشموع — للإخفاء اضغط تحريك (✋)" if _ar else "Auto Fibonacci from candles — click Pan (✋) to hide"))
-        self._btn_draw_rect.setToolTip("مستطيل منطقة — اسحب لرسم منطقة دعم/مقاومة" if _ar else "Rectangle — drag to draw support/resistance zone")
-        self._btn_draw_pan.setToolTip("تحريك/تكبير الشارت" if _ar else "Pan/zoom chart")
-        self._btn_draw_clear.setToolTip("حذف كل الخطوط والقنوات والمستطيلات وفيبوناتشي" if _ar else "Remove all drawings")
-        draw_col.addWidget(self._btn_draw_hline)
-        draw_col.addWidget(self._btn_draw_line)
-        draw_col.addWidget(self._btn_draw_channel)
+        self._btn_draw_fib.setStyleSheet(_btn_style)
+        self._btn_draw_fib.setFixedSize(26, 22)
+        self._btn_draw_fib.setCheckable(True)
+        self._btn_draw_fib.setToolTip(
+            "تفعيل فيبوناتشي: اسحب على الشارت بين نقطتين. إلغاء التفعيل لتحريك الشارت."
+            if _ar
+            else "Fib: drag on chart between two points. Uncheck to pan/zoom."
+        )
         draw_col.addWidget(self._btn_draw_fib)
-        draw_col.addWidget(self._btn_draw_rect)
-        draw_col.addWidget(self._btn_draw_pan)
-        draw_col.addWidget(self._btn_draw_clear)
         draw_col.addStretch(1)
         main_layout.addLayout(draw_col)
 
@@ -118,15 +72,7 @@ class ChartPanel(QWidget):
         self.candle_chart.setMinimumHeight(250)
         main_layout.addWidget(self.candle_chart, 1)
 
-        for key, btn in self._chart_type_buttons.items():
-            btn.clicked.connect(lambda checked, k=key: self.candle_chart.setChartType(k))
-        self._btn_draw_hline.clicked.connect(lambda: self.candle_chart.setDrawMode("hline"))
-        self._btn_draw_line.clicked.connect(lambda: self.candle_chart.setDrawMode("line"))
-        self._btn_draw_channel.clicked.connect(lambda: self.candle_chart.setDrawMode("channel"))
-        self._btn_draw_fib.clicked.connect(lambda: self.candle_chart.setDrawMode("fib"))
-        self._btn_draw_rect.clicked.connect(lambda: self.candle_chart.setDrawMode("rect"))
-        self._btn_draw_pan.clicked.connect(lambda: self.candle_chart.setDrawMode(None))
-        self._btn_draw_clear.clicked.connect(self.candle_chart.clearDrawings)
+        self._btn_draw_fib.toggled.connect(self._on_fib_mode_toggled)
 
         # تحميل الحالة الافتراضية من الإعدادات (لا نقرأ الملف في كل تحديث مؤشر — كان يسبب تجمّداً)
         try:
@@ -143,6 +89,9 @@ class ChartPanel(QWidget):
         self._countdown_timer = QTimer(self)
         self._countdown_timer.timeout.connect(self._update_countdown)
         self._countdown_timer.start(1000)
+
+    def _on_fib_mode_toggled(self, checked: bool):
+        self.candle_chart.setDrawMode("fib" if checked else None)
 
     def wheelEvent(self, event: QWheelEvent):
         """توجيه العجلة إلى الشارت حتى يعمل التكبير (أفقي وعمودي مع Ctrl)."""
@@ -266,5 +215,11 @@ class ChartPanel(QWidget):
     # ----------------------------------------------------
     def change_symbol(self, symbol: str):
         self.current_symbol = symbol
+        try:
+            self._btn_draw_fib.blockSignals(True)
+            self._btn_draw_fib.setChecked(False)
+        finally:
+            self._btn_draw_fib.blockSignals(False)
+        self.candle_chart.setDrawMode(None)
         self.candle_chart.resetView()
         log.debug("ChartPanel switched to symbol: %s", symbol)
