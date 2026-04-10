@@ -680,6 +680,7 @@ class TradingPanel(QWidget):
         self._trailing_diag_last_msg = ""
         self._position_peak_price = None  # أعلى سعر منذ فتح المركز — للبيع عند النزول (trailing)
         self._bot_last_buy_ts_by_symbol: dict[str, float] = {}
+        self._bot_last_buy_price_by_symbol: dict[str, float] = {}
         # آخر توصية من لوحة AI كما تُعرض للمستخدم (قبل فلاتر البوت) — يمنع خلط «شراء حد» مع «بيع» على الشاشة
         self._last_panel_recommendation: str = ""
         self._last_panel_confidence: float = 0.0
@@ -4002,17 +4003,17 @@ class TradingPanel(QWidget):
                     target,
                 )
             return
-        blocked, _wsec = self._same_symbol_buy_interval_should_block(cfg)
+        blocked, _gate_msg = self._same_symbol_buy_gates_should_block(cfg, float(cmp_px or 0))
         if blocked:
             _lb = time.time()
             if _lb - getattr(self, "_limit_buy_blocked_log_ts", 0) >= 45.0:
                 self._limit_buy_blocked_log_ts = _lb
                 log.info(
-                    "Bot: Limit buy conditions met — price %.6f <= target %.6f (type=%s); skipped same-symbol interval (%ds left)",
+                    "Bot: Limit buy met — price %.6f <= target %.6f (type=%s); skipped same-symbol gate: %s",
                     cmp_px,
                     target,
                     typ,
-                    _wsec,
+                    _gate_msg,
                 )
             return
         log.info(
@@ -4041,7 +4042,7 @@ class TradingPanel(QWidget):
         if hasattr(self, "bot_status_label") and self.bot_status_label:
             self.bot_status_label.setText("حد الشراء…")
         self._pending_order_reason = "حد الشراء"
-        self._stamp_bot_buy_commit_ts(cfg)
+        self._stamp_bot_buy_commit_ts(cfg, float(cmp_px or 0))
         self._execute_real_order(
             "BUY",
             cmp_px,
@@ -4934,21 +4935,16 @@ class TradingPanel(QWidget):
         if not last_price:
             QMessageBox.warning(self, "السعر", "لا يوجد سعر حالياً. انتظر تحديث البيانات.")
             return
-        blocked, _wait_sec = self._same_symbol_buy_interval_should_block(cfg)
+        blocked, gate_msg = self._same_symbol_buy_gates_should_block(cfg, float(last_price or 0))
         if blocked:
-            wait_left_min = max(1, int((_wait_sec + 59) // 60))
-            QMessageBox.information(
-                self,
-                tr("trading_robot_title"),
-                tr("bot_wait_same_symbol_buy_interval").format(m=wait_left_min),
-            )
+            QMessageBox.information(self, tr("trading_robot_title"), gate_msg)
             return
         self._order_in_progress = True
         self._set_trade_buttons_enabled(False)
         self._pending_order_reason = "شراء يدوي"
         self._pending_indicators = dict(self._last_indicators or {})
         self._pending_market_info = dict(self._last_market_info or {})
-        self._stamp_bot_buy_commit_ts(cfg)
+        self._stamp_bot_buy_commit_ts(cfg, float(last_price or 0))
         if self.is_real_mode():
             self._execute_real_order("BUY", last_price, cfg, testnet=False)
         else:
@@ -6927,6 +6923,17 @@ class TradingPanel(QWidget):
                         sym_b = str(self.current_symbol or sold_symbol or "").strip().upper()
                         if sym_b:
                             self._bot_last_buy_ts_by_symbol[sym_b] = time.time()
+                            try:
+                                cfg_px = load_config()
+                                if (
+                                    self._same_symbol_buy_price_pct_required(cfg_px) != 0.0
+                                    and float(price or 0) > 0
+                                ):
+                                    if not hasattr(self, "_bot_last_buy_price_by_symbol") or self._bot_last_buy_price_by_symbol is None:
+                                        self._bot_last_buy_price_by_symbol = {}
+                                    self._bot_last_buy_price_by_symbol[sym_b] = float(price)
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                 elif side == "SELL" and pnl is not None:
@@ -7039,6 +7046,8 @@ class TradingPanel(QWidget):
                     sym_fail = str(sold_symbol or self.current_symbol or "").strip().upper()
                     if sym_fail and hasattr(self, "_bot_last_buy_ts_by_symbol") and self._bot_last_buy_ts_by_symbol:
                         self._bot_last_buy_ts_by_symbol.pop(sym_fail, None)
+                    if sym_fail and hasattr(self, "_bot_last_buy_price_by_symbol") and self._bot_last_buy_price_by_symbol:
+                        self._bot_last_buy_price_by_symbol.pop(sym_fail, None)
                 except Exception:
                     pass
             # اجعل الفشل واضحاً في INFO + إشعار منبثق
@@ -8484,16 +8493,68 @@ class TradingPanel(QWidget):
             return True, int(max(1, round(float(min_gap_sec) - elapsed)))
         return False, 0
 
-    def _stamp_bot_buy_commit_ts(self, cfg: dict) -> None:
-        """يُستدعى عند بدء تنفيذ شراء بعد تجاوز الفلاتر — يمنع شراءاً ثانياً قبل انتهاء الفاصل حتى لو لم يُحدَّث الجدول بعد."""
-        if self._same_symbol_buy_interval_sec(cfg) <= 0:
-            return
+    @staticmethod
+    def _same_symbol_buy_price_pct_required(cfg: dict) -> float:
+        try:
+            v = float(cfg.get("bot_same_symbol_buy_min_price_move_pct", 0) or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if abs(v) < 1e-12:
+            return 0.0
+        return max(-10.0, min(10.0, v))
+
+    def _same_symbol_buy_price_move_should_block(self, cfg: dict, current_price: float) -> tuple[bool, float, float]:
+        """(يمنع، نسبة_الحركة_الحالية٪، النسبة_المطلوبة_من_الإعداد)."""
+        pct_req = self._same_symbol_buy_price_pct_required(cfg)
+        if pct_req == 0.0:
+            return False, 0.0, 0.0
+        sym_k = str(self.current_symbol or "").strip().upper()
+        if not sym_k:
+            return False, 0.0, pct_req
+        d = getattr(self, "_bot_last_buy_price_by_symbol", None) or {}
+        last_px = float(d.get(sym_k, 0.0) or 0.0)
+        cur = float(current_price or 0.0)
+        if last_px <= 0 or cur <= 0:
+            return False, 0.0, pct_req
+        move_pct = (cur - last_px) / last_px * 100.0
+        if pct_req > 0:
+            if move_pct + 1e-9 < pct_req:
+                return True, move_pct, pct_req
+        else:
+            if move_pct - 1e-9 > pct_req:
+                return True, move_pct, pct_req
+        return False, move_pct, pct_req
+
+    def _same_symbol_buy_gates_should_block(self, cfg: dict, current_price: float) -> tuple[bool, str]:
+        """(يمنع، نص_للمستخدم) — فاصل زمني ثم فاصل سعر٪."""
+        bt, wsec = self._same_symbol_buy_interval_should_block(cfg)
+        if bt:
+            wait_left_min = max(1, int((wsec + 59) // 60))
+            return True, tr("bot_wait_same_symbol_buy_interval").format(m=wait_left_min)
+        bp, _, req_p = self._same_symbol_buy_price_move_should_block(cfg, current_price)
+        if bp:
+            return True, tr("bot_wait_same_symbol_buy_price_pct").format(req=req_p)
+        return False, ""
+
+    def _stamp_bot_buy_commit_ts(self, cfg: dict, buy_price: float | None = None) -> None:
+        """عند بدء تنفيذ شراء: يحدّث طابع الزمن و/أو مرجع السعر لنفس الرمز حسب تفعيل كل فاصل."""
         sym_k = str(self.current_symbol or "").strip().upper()
         if not sym_k:
             return
+        t_gate = self._same_symbol_buy_interval_sec(cfg) > 0
+        p_gate = self._same_symbol_buy_price_pct_required(cfg) != 0.0
+        if not t_gate and not p_gate:
+            return
         if not hasattr(self, "_bot_last_buy_ts_by_symbol") or self._bot_last_buy_ts_by_symbol is None:
             self._bot_last_buy_ts_by_symbol = {}
-        self._bot_last_buy_ts_by_symbol[sym_k] = time.time()
+        if not hasattr(self, "_bot_last_buy_price_by_symbol") or self._bot_last_buy_price_by_symbol is None:
+            self._bot_last_buy_price_by_symbol = {}
+        if t_gate:
+            self._bot_last_buy_ts_by_symbol[sym_k] = time.time()
+        if p_gate:
+            px = float(buy_price or 0.0)
+            if px > 0:
+                self._bot_last_buy_price_by_symbol[sym_k] = px
 
     def on_ai_recommendation(self, recommendation: str, confidence: float, indicators=None, market_info=None):
         """عند توصية AI: إن كان الربوت مفعّلاً ووضع Testnet، تنفيذ شراء/بيع تلقائي.
@@ -8585,12 +8646,10 @@ class TradingPanel(QWidget):
         recommendation = action
         confidence = final_confidence
         if recommendation == "BUY":
-            blocked, _wait_sec = self._same_symbol_buy_interval_should_block(cfg)
+            _lp_gate = float(last_price or self._last_price or 0)
+            blocked, gate_msg = self._same_symbol_buy_gates_should_block(cfg, _lp_gate)
             if blocked:
-                wait_left_min = max(1, int((_wait_sec + 59) // 60))
-                self._bot_skip(
-                    tr("bot_wait_same_symbol_buy_interval").format(m=wait_left_min)
-                )
+                self._bot_skip(gate_msg)
                 return
             if (cfg.get("exchange") or "").lower() == "etoro" and _config_use_futures(cfg):
                 ul = getattr(self, "_bot_etoro_unlisted_symbol", None)
@@ -8645,7 +8704,7 @@ class TradingPanel(QWidget):
         )
         self._pending_order_reason = "توصية البوت - شراء" if recommendation == "BUY" else "توصية البوت - بيع"
         if recommendation == "BUY":
-            self._stamp_bot_buy_commit_ts(cfg)
+            self._stamp_bot_buy_commit_ts(cfg, float(last_price or self._last_price or 0))
         self._execute_real_order(recommendation, last_price or self._last_price or 0, cfg, testnet=(not self._real_mode))
 
     # ============================================================

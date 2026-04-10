@@ -175,6 +175,7 @@ def record_bot_buy(symbol: str, entry_price: float, quantity: float, confidence:
         "max_trades_per_symbol": int(_cfg.get("max_trades_per_symbol", 0) or 0),
         "portfolio_max_exposure_usdt": float(_cfg.get("portfolio_max_exposure_usdt", 0) or 0),
         "bot_same_symbol_buy_min_interval_min": int(_cfg.get("bot_same_symbol_buy_min_interval_min", 1) or 1),
+        "bot_same_symbol_buy_min_price_move_pct": float(_cfg.get("bot_same_symbol_buy_min_price_move_pct", 0) or 0),
     }
     data = _load_data()
     data["outcomes"].append({

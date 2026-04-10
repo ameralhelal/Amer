@@ -334,6 +334,19 @@ class RiskSettingsWindow(QDialog):
         same_sym_hint.setStyleSheet("color: #888; font-size: 11px;")
         same_sym_hint.setWordWrap(True)
         form_amt.addRow("", same_sym_hint)
+        self.bot_same_symbol_buy_price_move_spin = QDoubleSpinBox()
+        self.bot_same_symbol_buy_price_move_spin.setRange(-10.0, 10.0)
+        self.bot_same_symbol_buy_price_move_spin.setDecimals(2)
+        self.bot_same_symbol_buy_price_move_spin.setSingleStep(0.1)
+        self.bot_same_symbol_buy_price_move_spin.setSuffix(" %")
+        form_amt.addRow(
+            tr("risk_bot_same_symbol_buy_min_price_move_pct"),
+            self.bot_same_symbol_buy_price_move_spin,
+        )
+        same_sym_pct_hint = QLabel(tr("risk_bot_same_symbol_buy_min_price_move_pct_hint"))
+        same_sym_pct_hint.setStyleSheet("color: #888; font-size: 11px;")
+        same_sym_pct_hint.setWordWrap(True)
+        form_amt.addRow("", same_sym_pct_hint)
         group_amount.setLayout(form_amt)
         basic_layout.addWidget(group_amount)
 
@@ -1614,6 +1627,17 @@ class RiskSettingsWindow(QDialog):
             except Exception:
                 gap_min = DEFAULTS.get("bot_same_symbol_buy_min_interval_min", 1)
         self.bot_same_symbol_buy_min_interval_spin.setValue(int(gap_min or 0))
+        try:
+            _pm = float(
+                cfg.get(
+                    "bot_same_symbol_buy_min_price_move_pct",
+                    DEFAULTS.get("bot_same_symbol_buy_min_price_move_pct", 0.0),
+                )
+                or 0.0
+            )
+        except (TypeError, ValueError):
+            _pm = 0.0
+        self.bot_same_symbol_buy_price_move_spin.setValue(max(-10.0, min(10.0, _pm)))
         self.bot_confidence_spin.setValue(int(cfg.get("bot_confidence_min", DEFAULTS.get("bot_confidence_min", 60))))
         self.market_scanner_pool_size_spin.setValue(
             int(cfg.get("market_scanner_pool_size", DEFAULTS.get("market_scanner_pool_size", 50)) or 50)
@@ -1916,6 +1940,11 @@ class RiskSettingsWindow(QDialog):
         cfg["max_trades_per_symbol"] = self.max_trades_per_symbol_spin.value()
         cfg["portfolio_max_exposure_usdt"] = int(self.portfolio_max_exposure_spin.value())
         cfg["bot_same_symbol_buy_min_interval_min"] = int(self.bot_same_symbol_buy_min_interval_spin.value())
+        try:
+            _pmv = float(self.bot_same_symbol_buy_price_move_spin.value())
+        except (TypeError, ValueError):
+            _pmv = 0.0
+        cfg["bot_same_symbol_buy_min_price_move_pct"] = round(max(-10.0, min(10.0, _pmv)), 2)
         cfg.pop("bot_swing_high_lookback", None)
         cfg.pop("bot_min_pullback_from_peak_pct", None)
         cfg["bot_confidence_min"] = self.bot_confidence_spin.value()
@@ -2074,7 +2103,7 @@ class RiskSettingsWindow(QDialog):
 
     def _connect_dirty(self):
         """ربط كل الحقول بتفعيل علامة «تغييرات غير محفوظة»."""
-        for w in (self.amount_spin, self.daily_loss_spin, self.max_trades_per_day_spin, self.bot_max_open_trades_spin, self.max_consecutive_losses_spin, self.cb_volatility_spin, self.cb_adx_spin, self.cb_mtf_bias_spin, self.cb_mtf_rsi_spin, self.cb_pause_spin, self.max_trades_per_symbol_spin, self.portfolio_max_exposure_spin, self.bot_same_symbol_buy_min_interval_spin, self.bot_confidence_spin, self.market_scanner_pool_size_spin, self.market_scanner_min_quote_volume_spin, self.market_scanner_min_change_spin, self.market_scanner_min_range_spin, self.bot_ev_min_pct_spin, self.bot_ev_min_trend_up_spin, self.bot_ev_min_trend_down_spin, self.bot_ev_min_range_spin, self.bot_ev_min_volatile_spin, self.ml_wf_cost_spin, self.ml_wf_train_min_spin, self.ml_wf_test_window_spin,
+        for w in (self.amount_spin, self.daily_loss_spin, self.max_trades_per_day_spin, self.bot_max_open_trades_spin, self.max_consecutive_losses_spin, self.cb_volatility_spin, self.cb_adx_spin, self.cb_mtf_bias_spin, self.cb_mtf_rsi_spin, self.cb_pause_spin, self.max_trades_per_symbol_spin, self.portfolio_max_exposure_spin, self.bot_same_symbol_buy_min_interval_spin, self.bot_same_symbol_buy_price_move_spin, self.bot_confidence_spin, self.market_scanner_pool_size_spin, self.market_scanner_min_quote_volume_spin, self.market_scanner_min_change_spin, self.market_scanner_min_range_spin, self.bot_ev_min_pct_spin, self.bot_ev_min_trend_up_spin, self.bot_ev_min_trend_down_spin, self.bot_ev_min_range_spin, self.bot_ev_min_volatile_spin, self.ml_wf_cost_spin, self.ml_wf_train_min_spin, self.ml_wf_test_window_spin,
                   self.trailing_stop_spin, self.trailing_min_profit_spin,
                   self.sell_overbought_rsi_spin,
                   self.sell_overbought_min_profit_spin,
@@ -2311,6 +2340,7 @@ class RiskSettingsWindow(QDialog):
         self.trailing_stop_spin.setValue(2.2 if h == "swing" else 1.8)
         self.trailing_min_profit_spin.setValue(1.8 if h == "swing" else 0.8)
         self.bot_same_symbol_buy_min_interval_spin.setValue(4 if h == "swing" else 0)
+        self.bot_same_symbol_buy_price_move_spin.setValue(0.0)
         self._set_dirty()
 
     def _on_trade_horizon_changed(self):
